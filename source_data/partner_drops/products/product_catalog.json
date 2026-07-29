@@ -1,0 +1,182 @@
+{
+  "generatedDate": "2026-07-20",
+  "source": "MerchandisingSystem",
+  "products": [
+    {
+      "sku": "NM-1001",
+      "productName": "Wireless Earbuds",
+      "category": "Electronics",
+      "listPrice": 79.99,
+      "attributes": {
+        "brand": "NovaBrand",
+        "active": true,
+        "weightKg": 0.17
+      }
+    },
+    {
+      "sku": "NM-1002",
+      "productName": "Smart Watch",
+      "category": "Electronics",
+      "listPrice": 199.0,
+      "attributes": {
+        "brand": "Generic",
+        "active": true,
+        "weightKg": 0.81
+      }
+    },
+    {
+      "sku": "NM-1003",
+      "productName": "Bluetooth Speaker",
+      "category": "Electronics",
+      "listPrice": 49.5,
+      "attributes": {
+        "brand": "Acme",
+        "active": true,
+        "weightKg": 2.24
+      }
+    },
+    {
+      "sku": "NM-1004",
+      "productName": "4K Streaming Stick",
+      "category": "Electronics",
+      "listPrice": 39.99,
+      "attributes": {
+        "brand": "NovaBrand",
+        "active": true,
+        "weightKg": 1.81
+      }
+    },
+    {
+      "sku": "NM-1005",
+      "productName": "USB-C Charger",
+      "category": "Electronics",
+      "listPrice": 24.99,
+      "attributes": {
+        "brand": "NovaBrand",
+        "active": true,
+        "weightKg": 0.19
+      }
+    },
+    {
+      "sku": "NM-1006",
+      "productName": "Ceramic Mug Set",
+      "category": "Home",
+      "listPrice": 29.99,
+      "attributes": {
+        "brand": "Acme",
+        "active": true,
+        "weightKg": 0.77
+      }
+    },
+    {
+      "sku": "NM-1007",
+      "productName": "LED Desk Lamp",
+      "category": "Home",
+      "listPrice": 34.95,
+      "attributes": {
+        "brand": "NovaBrand",
+        "active": true,
+        "weightKg": 1.73
+      }
+    },
+    {
+      "sku": "NM-1008",
+      "productName": "Cotton Bath Towels",
+      "category": "Home",
+      "listPrice": 45.0,
+      "attributes": {
+        "brand": "PremiumLine",
+        "active": true,
+        "weightKg": 0.74
+      }
+    },
+    {
+      "sku": "NM-1009",
+      "productName": "Stainless Water Bottle",
+      "category": "Home",
+      "listPrice": 19.99,
+      "attributes": {
+        "brand": "Generic",
+        "active": true,
+        "weightKg": 2.45
+      }
+    },
+    {
+      "sku": "NM-1010",
+      "productName": "Merino Wool Socks",
+      "category": "Apparel",
+      "listPrice": 18.0,
+      "attributes": {
+        "brand": "NovaBrand",
+        "active": true,
+        "weightKg": 2.3
+      }
+    },
+    {
+      "sku": "NM-1011",
+      "productName": "Rain Jacket",
+      "category": "Apparel",
+      "listPrice": 89.99,
+      "attributes": {
+        "brand": "Acme",
+        "active": true,
+        "weightKg": 2.12
+      }
+    },
+    {
+      "sku": "NM-1012",
+      "productName": "Cotton T-Shirt",
+      "category": "Apparel",
+      "listPrice": 15.0,
+      "attributes": {
+        "brand": "Generic",
+        "active": true,
+        "weightKg": 0.91
+      }
+    },
+    {
+      "sku": "NM-1013",
+      "productName": "Baseball Cap",
+      "category": "Apparel",
+      "listPrice": 22.5,
+      "attributes": {
+        "brand": "Acme",
+        "active": true,
+        "weightKg": 2.88
+      }
+    },
+    {
+      "sku": "NM-1014",
+      "productName": "Organic Coffee Beans 1kg",
+      "category": "Grocery",
+      "listPrice": 21.99,
+      "attributes": {
+        "brand": "Generic",
+        "active": true,
+        "weightKg": 0.4
+      }
+    },
+    {
+      "sku": "NM-1015",
+      "productName": "Dark Chocolate Bar",
+      "category": "Grocery",
+      "listPrice": 4.5,
+      "attributes": {
+        "brand": "PremiumLine",
+        "active": true,
+        "weightKg": 0.38
+      }
+    },
+    {
+      "sku": "NM-1016",
+      "productName": "Green Tea 100ct",
+      "category": "Grocery",
+      "listPrice": 12.99,
+      "attributes": {
+        "brand": "Generic",
+        "active": true,
+        "weightKg": 1.85
+      }
+    }
+  ]
+}

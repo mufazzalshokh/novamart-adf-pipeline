@@ -1,0 +1,66 @@
+CustomerID,FirstName,LastName,Email,City,LoyaltyTier
+1,Olivia,Garcia,olivia.garcia1@example.com,Denver,Gold
+2,Liam,Nguyen,liam.nguyen2@example.com,Portland,Silver
+3,Lena,Khan,lena.khan3@example.com,Austin,Standard
+4,Sofia,Chen,sofia.chen4@example.com,Denver,Standard
+5,Lucas,Nguyen,lucas.nguyen5@example.com,Denver,Standard
+6,Lena,Nguyen,lena.nguyen6@example.com,Austin,Gold
+7,Lena,Khan,lena.khan7@example.com,Denver,Standard
+8,Lucas,Khan,lucas.khan8@example.com,San Jose,Silver
+9,Ivan,Garcia,ivan.garcia9@example.com,Portland,Gold
+10,Kai,Kim,kai.kim10@example.com,San Jose,Standard
+11,Lena,Silva,lena.silva11@example.com,Austin,Silver
+12,Noah,Kim,noah.kim12@example.com,Austin,Gold
+13,Liam,Silva,liam.silva13@example.com,Miami,Silver
+14,Omar,Chen,omar.chen14@example.com,New York,Silver
+15,Lena,Patel,lena.patel15@example.com,New York,Silver
+16,Lucas,Garcia,lucas.garcia16@example.com,Austin,Standard
+17,Lena,Rossi,lena.rossi17@example.com,Miami,Silver
+18,Priya,Rossi,priya.rossi18@example.com,Portland,Standard
+19,Hana,Chen,hana.chen19@example.com,San Jose,Silver
+20,Mia,Patel,mia.patel20@example.com,Denver,Standard
+21,Sofia,Kim,sofia.kim21@example.com,New York,Silver
+22,Mateo,Silva,mateo.silva22@example.com,Miami,Gold
+23,Priya,Nguyen,priya.nguyen23@example.com,Portland,Silver
+24,Diego,Nguyen,diego.nguyen24@example.com,Seattle,Gold
+25,Kai,Silva,kai.silva25@example.com,Portland,Silver
+26,Zoe,Ivanov,zoe.ivanov26@example.com,Chicago,Silver
+27,Mateo,Garcia,mateo.garcia27@example.com,Portland,Silver
+28,Liam,Smith,liam.smith28@example.com,Chicago,Standard
+29,Lucas,Chen,lucas.chen29@example.com,Denver,Silver
+30,Sofia,Garcia,sofia.garcia30@example.com,Miami,Silver
+31,Omar,Rossi,omar.rossi31@example.com,San Jose,Silver
+32,Omar,Rossi,omar.rossi32@example.com,Denver,Silver
+33,Zoe,Smith,zoe.smith33@example.com,San Jose,Standard
+34,Ethan,Garcia,ethan.garcia34@example.com,Austin,Gold
+35,Lucas,Khan,lucas.khan35@example.com,Miami,Gold
+36,Ethan,Rossi,ethan.rossi36@example.com,Chicago,Standard
+37,Mia,Chen,mia.chen37@example.com,New York,Gold
+38,Lena,Ivanov,lena.ivanov38@example.com,San Jose,Gold
+39,Hana,Silva,hana.silva39@example.com,Seattle,Gold
+40,Omar,Chen,omar.chen40@example.com,Denver,Silver
+41,Zoe,Nguyen,zoe.nguyen41@example.com,Miami,Gold
+42,Zoe,Khan,zoe.khan42@example.com,Austin,Standard
+43,Ava,Patel,ava.patel43@example.com,San Jose,Standard
+44,Olivia,Silva,olivia.silva44@example.com,Seattle,Standard
+45,Aisha,Silva,aisha.silva45@example.com,San Jose,Gold
+46,Noah,Ivanov,noah.ivanov46@example.com,Seattle,Standard
+47,Ava,Silva,ava.silva47@example.com,Denver,Standard
+48,Emma,Ivanov,emma.ivanov48@example.com,New York,Silver
+49,Noah,Nguyen,noah.nguyen49@example.com,Miami,Silver
+50,Diego,Patel,diego.patel50@example.com,Chicago,Standard
+51,Mia,Nguyen,mia.nguyen51@example.com,New York,Gold
+52,Emma,Patel,emma.patel52@example.com,San Jose,Gold
+53,Aisha,Smith,aisha.smith53@example.com,New York,Standard
+54,Omar,Khan,omar.khan54@example.com,Chicago,Gold
+55,Sofia,Rossi,sofia.rossi55@example.com,New York,Standard
+56,Mateo,Smith,mateo.smith56@example.com,New York,Gold
+57,Lucas,Silva,lucas.silva57@example.com,Austin,Standard
+58,Zoe,Smith,zoe.smith58@example.com,Austin,Gold
+59,Diego,Ivanov,diego.ivanov59@example.com,Seattle,Standard
+60,Emma,Patel,emma.patel60@example.com,Chicago,Standard
+61,Ethan,Silva,ethan.silva61@example.com,New York,Standard
+62,Sofia,Kim,sofia.kim62@example.com,Portland,Standard
+63,Diego,Ivanov,diego.ivanov63@example.com,Denver,Standard
+64,Liam,Rossi,liam.rossi64@example.com,Seattle,Standard
+65,Ivan,Smith,ivan.smith65@example.com,New York,Standard
