@@ -1,0 +1,157 @@
+{
+  "name": "pl_dimensions_load",
+  "properties": {
+    "description": "Upserts product JSON and store CSV reference data with explicit mappings.",
+    "annotations": ["NMDP-104", "Dimensions", "Reference data"],
+    "parameters": {
+      "container": { "type": "string", "defaultValue": "landing" },
+      "logicAppUrl": { "type": "string", "defaultValue": "" }
+    },
+    "activities": [
+      {
+        "name": "Copy Product Catalog",
+        "type": "Copy",
+        "dependsOn": [],
+        "policy": { "timeout": "0.01:00:00", "retry": 2, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "userProperties": [
+          { "name": "Source", "value": "product_catalog.json/products" },
+          { "name": "Sink", "value": "dbo.DimProduct" }
+        ],
+        "typeProperties": {
+          "source": {
+            "type": "JsonSource",
+            "storeSettings": { "type": "AzureBlobStorageReadSettings", "recursive": false, "enablePartitionDiscovery": false },
+            "formatSettings": { "type": "JsonReadSettings" }
+          },
+          "sink": {
+            "type": "AzureSqlSink",
+            "writeBehavior": "upsert",
+            "upsertSettings": { "useTempDB": true, "keys": ["SKU"] },
+            "sqlWriterUseTableLock": false,
+            "disableMetricsCollection": false
+          },
+          "enableStaging": false,
+          "translator": {
+            "type": "TabularTranslator",
+            "collectionReference": "$['products']",
+            "typeConversion": true,
+            "typeConversionSettings": { "allowDataTruncation": false, "treatBooleanAsNumber": false },
+            "mappings": [
+              { "source": { "path": "$['sku']" }, "sink": { "name": "SKU", "type": "String" } },
+              { "source": { "path": "$['productName']" }, "sink": { "name": "ProductName", "type": "String" } },
+              { "source": { "path": "$['category']" }, "sink": { "name": "Category", "type": "String" } },
+              { "source": { "path": "$['listPrice']" }, "sink": { "name": "ListPrice", "type": "Decimal" } },
+              { "source": { "path": "$['attributes']['brand']" }, "sink": { "name": "Brand", "type": "String" } }
+            ]
+          }
+        },
+        "inputs": [{
+          "referenceName": "ds_json_products",
+          "type": "DatasetReference",
+          "parameters": { "container": "@pipeline().parameters.container", "folder": "source_data/partner_drops/products", "file": "product_catalog.json" }
+        }],
+        "outputs": [{
+          "referenceName": "ds_sql_table",
+          "type": "DatasetReference",
+          "parameters": { "schemaName": "dbo", "tableName": "DimProduct" }
+        }]
+      },
+      {
+        "name": "Copy Stores",
+        "type": "Copy",
+        "dependsOn": [],
+        "policy": { "timeout": "0.01:00:00", "retry": 2, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "userProperties": [
+          { "name": "Source", "value": "stores.csv" },
+          { "name": "Sink", "value": "dbo.DimStore" }
+        ],
+        "typeProperties": {
+          "source": {
+            "type": "DelimitedTextSource",
+            "storeSettings": { "type": "AzureBlobStorageReadSettings", "recursive": false, "enablePartitionDiscovery": false },
+            "formatSettings": { "type": "DelimitedTextReadSettings" }
+          },
+          "sink": {
+            "type": "AzureSqlSink",
+            "writeBehavior": "upsert",
+            "upsertSettings": { "useTempDB": true, "keys": ["StoreID"] },
+            "sqlWriterUseTableLock": false,
+            "disableMetricsCollection": false
+          },
+          "enableStaging": false,
+          "translator": {
+            "type": "TabularTranslator",
+            "typeConversion": true,
+            "typeConversionSettings": { "allowDataTruncation": false, "treatBooleanAsNumber": false },
+            "mappings": [
+              { "source": { "name": "StoreID", "type": "String" }, "sink": { "name": "StoreID", "type": "Int32" } },
+              { "source": { "name": "StoreName", "type": "String" }, "sink": { "name": "StoreName", "type": "String" } },
+              { "source": { "name": "City", "type": "String" }, "sink": { "name": "City", "type": "String" } },
+              { "source": { "name": "State", "type": "String" }, "sink": { "name": "State", "type": "String" } },
+              { "source": { "name": "Country", "type": "String" }, "sink": { "name": "Country", "type": "String" } }
+            ]
+          }
+        },
+        "inputs": [{
+          "referenceName": "ds_csv_generic",
+          "type": "DatasetReference",
+          "parameters": { "container": "@pipeline().parameters.container", "folder": "source_data/partner_drops/stores", "file": "stores.csv" }
+        }],
+        "outputs": [{
+          "referenceName": "ds_sql_table",
+          "type": "DatasetReference",
+          "parameters": { "schemaName": "dbo", "tableName": "DimStore" }
+        }]
+      },
+      {
+        "name": "Notify Product Failure",
+        "type": "ExecutePipeline",
+        "dependsOn": [{ "activity": "Copy Product Catalog", "dependencyConditions": ["Failed"] }],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_notify_failure", "type": "PipelineReference" },
+          "waitOnCompletion": true,
+          "parameters": {
+            "logicAppUrl": { "value": "@if(empty(pipeline().parameters.logicAppUrl), pipeline().globalParameters.logicAppCallbackUrl, pipeline().parameters.logicAppUrl)", "type": "Expression" },
+            "failedPipeline": { "value": "@pipeline().Pipeline", "type": "Expression" },
+            "failedRunId": { "value": "@pipeline().RunId", "type": "Expression" },
+            "failureMessage": { "value": "@activity('Copy Product Catalog').error.message", "type": "Expression" }
+          }
+        }
+      },
+      {
+        "name": "Notify Store Failure",
+        "type": "ExecutePipeline",
+        "dependsOn": [{ "activity": "Copy Stores", "dependencyConditions": ["Failed"] }],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_notify_failure", "type": "PipelineReference" },
+          "waitOnCompletion": true,
+          "parameters": {
+            "logicAppUrl": { "value": "@if(empty(pipeline().parameters.logicAppUrl), pipeline().globalParameters.logicAppCallbackUrl, pipeline().parameters.logicAppUrl)", "type": "Expression" },
+            "failedPipeline": { "value": "@pipeline().Pipeline", "type": "Expression" },
+            "failedRunId": { "value": "@pipeline().RunId", "type": "Expression" },
+            "failureMessage": { "value": "@activity('Copy Stores').error.message", "type": "Expression" }
+          }
+        }
+      },
+      {
+        "name": "Fail Product Dimension",
+        "type": "Fail",
+        "dependsOn": [{ "activity": "Notify Product Failure", "dependencyConditions": ["Completed"] }],
+        "typeProperties": {
+          "message": "Product dimension load failed; notification was attempted.",
+          "errorCode": "NMDP_PRODUCT_LOAD_FAILED"
+        }
+      },
+      {
+        "name": "Fail Store Dimension",
+        "type": "Fail",
+        "dependsOn": [{ "activity": "Notify Store Failure", "dependencyConditions": ["Completed"] }],
+        "typeProperties": {
+          "message": "Store dimension load failed; notification was attempted.",
+          "errorCode": "NMDP_STORE_LOAD_FAILED"
+        }
+      }
+    ],
+    "folder": { "name": "Dimensions" }
+  }
+}

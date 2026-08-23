@@ -1,0 +1,30 @@
+{
+  "Microsoft.DataFactory/factories": {
+    "properties": {
+      "globalParameters": {
+        "*": { "value": "=" }
+      }
+    },
+    "location": "="
+  },
+  "Microsoft.DataFactory/factories/linkedServices": {
+    "*": {
+      "properties": {
+        "parameters": {
+          "*": { "defaultValue": "=" }
+        },
+        "typeProperties": {
+          "baseUrl": "=",
+          "connectionString": "|:-connectionString:secureString"
+        }
+      }
+    }
+  },
+  "Microsoft.DataFactory/factories/triggers": {
+    "properties": {
+      "typeProperties": {
+        "scope": "="
+      }
+    }
+  }
+}

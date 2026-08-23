@@ -1,0 +1,20 @@
+{
+  "name": "ds_sql_table",
+  "properties": {
+    "linkedServiceName": {
+      "referenceName": "ls_sql_kv",
+      "type": "LinkedServiceReference"
+    },
+    "parameters": {
+      "tableName": { "type": "string" },
+      "schemaName": { "type": "string", "defaultValue": "dbo" }
+    },
+    "annotations": ["NMDP-101", "Reusable SQL table"],
+    "type": "AzureSqlTable",
+    "schema": [],
+    "typeProperties": {
+      "schema": "@dataset().schemaName",
+      "table": "@dataset().tableName"
+    }
+  }
+}

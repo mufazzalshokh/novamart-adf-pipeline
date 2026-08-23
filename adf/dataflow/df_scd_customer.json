@@ -1,0 +1,61 @@
+{
+  "name": "df_scd_customer",
+  "properties": {
+    "description": "Typed snapshot ingestion for the transactional SCD Type 2 apply step.",
+    "type": "MappingDataFlow",
+    "typeProperties": {
+      "sources": [
+        {
+          "dataset": {
+            "referenceName": "ds_csv_generic",
+            "type": "DatasetReference",
+            "parameters": {
+              "container": { "value": "'landing'", "type": "Expression" },
+              "folder": { "value": "'source_data/customers'", "type": "Expression" },
+              "file": { "value": "$customerFile", "type": "Expression" }
+            }
+          },
+          "name": "CustomerSnapshot"
+        }
+      ],
+      "sinks": [
+        {
+          "dataset": {
+            "referenceName": "ds_sql_table",
+            "type": "DatasetReference",
+            "parameters": {
+              "schemaName": { "value": "'dbo'", "type": "Expression" },
+              "tableName": { "value": "'StgCustomer'", "type": "Expression" }
+            }
+          },
+          "name": "StageCustomer"
+        }
+      ],
+      "transformations": [],
+      "scriptLines": [
+        "parameters{",
+        "     customerFile as string ('customers_20260720.csv')",
+        "}",
+        "source(output(",
+        "          CustomerID as integer,",
+        "          FirstName as string,",
+        "          LastName as string,",
+        "          Email as string,",
+        "          City as string,",
+        "          LoyaltyTier as string",
+        "     ),",
+        "     allowSchemaDrift: false,",
+        "     validateSchema: true,",
+        "     ignoreNoFilesFound: false) ~> CustomerSnapshot",
+        "CustomerSnapshot sink(allowSchemaDrift: true, validateSchema: false, input(",
+        "          CustomerID as integer,",
+        "          FirstName as string,",
+        "          LastName as string,",
+        "          Email as string,",
+        "          City as string,",
+        "          LoyaltyTier as string",
+        "     ), deletable: false, insertable: true, updateable: false, upsertable: false, truncate: true, format: 'table', skipDuplicateMapInputs: true, skipDuplicateMapOutputs: true, errorHandlingOption: 'stopOnFirstError', mapColumn(CustomerID, FirstName, LastName, Email, City, LoyaltyTier)) ~> StageCustomer"
+      ]
+    }
+  }
+}

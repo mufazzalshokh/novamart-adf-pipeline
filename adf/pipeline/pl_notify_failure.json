@@ -1,0 +1,66 @@
+{
+  "name": "pl_notify_failure",
+  "properties": {
+    "description": "Reusable child pipeline: read active recipients and POST one failure notification per recipient.",
+    "annotations": ["NMDP-108", "Operations", "Reusable child"],
+    "parameters": {
+      "logicAppUrl": { "type": "string" },
+      "failedPipeline": { "type": "string" },
+      "failedRunId": { "type": "string" },
+      "failureMessage": { "type": "string" }
+    },
+    "activities": [
+      {
+        "name": "Lookup Active Recipients",
+        "description": "Recipients are data-driven; changing the on-call list requires no pipeline edit.",
+        "type": "Lookup",
+        "dependsOn": [],
+        "policy": { "timeout": "0.00:10:00", "retry": 2, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "userProperties": [{ "name": "Purpose", "value": "Failure recipients" }],
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource",
+            "sqlReaderQuery": "SELECT EmailAddress FROM dbo.EmailRecipient WHERE Active = 1 ORDER BY RecipientID",
+            "queryTimeout": "02:00:00",
+            "partitionOption": "None"
+          },
+          "dataset": {
+            "referenceName": "ds_sql_table",
+            "type": "DatasetReference",
+            "parameters": { "schemaName": "dbo", "tableName": "EmailRecipient" }
+          },
+          "firstRowOnly": false
+        }
+      },
+      {
+        "name": "ForEach Recipient",
+        "type": "ForEach",
+        "dependsOn": [{ "activity": "Lookup Active Recipients", "dependencyConditions": ["Succeeded"] }],
+        "typeProperties": {
+          "items": { "value": "@activity('Lookup Active Recipients').output.value", "type": "Expression" },
+          "isSequential": false,
+          "batchCount": 10,
+          "activities": [
+            {
+              "name": "POST Failure Email",
+              "type": "WebActivity",
+              "dependsOn": [],
+              "policy": { "timeout": "0.00:02:00", "retry": 3, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": true },
+              "userProperties": [{ "name": "Recipient", "value": "@item().EmailAddress" }],
+              "typeProperties": {
+                "method": "POST",
+                "url": { "value": "@pipeline().parameters.logicAppUrl", "type": "Expression" },
+                "headers": { "Content-Type": "application/json" },
+                "body": {
+                  "value": "@concat('{\"emailAddress\":\"', replace(item().EmailAddress, '\"', '\\\"'), '\",\"subject\":\"[NovaMart] ADF failure: ', replace(pipeline().parameters.failedPipeline, '\"', '\\\"'), '\",\"messageBody\":\"Pipeline: ', replace(pipeline().parameters.failedPipeline, '\"', '\\\"'), '\\nRun ID: ', replace(pipeline().parameters.failedRunId, '\"', '\\\"'), '\\nEnvironment: ', pipeline().globalParameters.environment, '\\nError: ', replace(replace(pipeline().parameters.failureMessage, '\"', '\\\"'), decodeUriComponent('%0A'), '\\n'), '\"}')",
+                  "type": "Expression"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "folder": { "name": "Operations" }
+  }
+}

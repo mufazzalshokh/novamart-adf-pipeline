@@ -1,0 +1,24 @@
+{
+  "name": "tr_schedule_daily",
+  "properties": {
+    "description": "Runs the NovaMart master load every day at 06:00 UTC. Deploy stopped; CI/CD starts it after environment configuration.",
+    "annotations": ["NMDP-109", "Schedule"],
+    "runtimeState": "Stopped",
+    "pipelines": [
+      {
+        "pipelineReference": { "referenceName": "pl_master_daily", "type": "PipelineReference" },
+        "parameters": {}
+      }
+    ],
+    "type": "ScheduleTrigger",
+    "typeProperties": {
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "startTime": "2026-08-24T06:00:00Z",
+        "timeZone": "UTC",
+        "schedule": { "hours": [6], "minutes": [0] }
+      }
+    }
+  }
+}

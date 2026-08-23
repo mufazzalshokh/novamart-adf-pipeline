@@ -1,0 +1,6 @@
+// Resource-specific diagnostic mode is configured by infra/platform.bicep.
+ADFPipelineRun
+| where TimeGenerated > ago(24h)
+| where Status == "Failed"
+| project TimeGenerated, DataFactory, PipelineName, RunId, FailureType, Message
+| order by TimeGenerated desc

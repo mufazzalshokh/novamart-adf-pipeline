@@ -1,0 +1,119 @@
+trigger:
+  branches:
+    include:
+      - adf_publish
+
+pr: none
+
+parameters:
+  - name: deployEnvironment
+    displayName: Target environment
+    type: string
+    default: prod
+    values: [dev, prod]
+
+variables:
+  - group: novamart-${{ parameters.deployEnvironment }}
+  - name: azureServiceConnection
+    value: 'sc-novamart-azure'
+  - name: templateFile
+    value: '$(Build.SourcesDirectory)/$(adfPublishFolder)/ARMTemplateForFactory.json'
+  - name: parametersFile
+    value: '$(Build.SourcesDirectory)/$(adfPublishFolder)/ARMTemplateParametersForFactory.json'
+
+stages:
+  - stage: Validate
+    displayName: Validate published ARM template
+    jobs:
+      - job: ValidateTemplate
+        pool: { vmImage: 'ubuntu-latest' }
+        steps:
+          - task: AzureResourceManagerTemplateDeployment@3
+            displayName: ARM validation
+            inputs:
+              deploymentScope: Resource Group
+              azureResourceManagerConnection: '$(azureServiceConnection)'
+              subscriptionId: '$(azureSubscriptionId)'
+              action: 'Create Or Update Resource Group'
+              resourceGroupName: '$(resourceGroupName)'
+              location: '$(azureLocation)'
+              templateLocation: 'Linked artifact'
+              csmFile: '$(templateFile)'
+              csmParametersFile: '$(parametersFile)'
+              overrideParameters: >-
+                -factoryName "$(dataFactoryName)"
+                -ls_keyvault_properties_parameters_baseUrl_defaultValue "$(keyVaultUrl)"
+                -ls_adls_kv_properties_parameters_keyVaultUrl_defaultValue "$(keyVaultUrl)"
+                -ls_sql_kv_properties_parameters_keyVaultUrl_defaultValue "$(keyVaultUrl)"
+                -tr_event_sales_properties_typeProperties_scope "$(storageAccountResourceId)"
+              deploymentMode: Validation
+
+  - stage: Deploy
+    displayName: Deploy ADF to ${{ parameters.deployEnvironment }}
+    dependsOn: Validate
+    condition: succeeded()
+    jobs:
+      - deployment: DeployFactory
+        environment: 'novamart-${{ parameters.deployEnvironment }}'
+        pool: { vmImage: 'ubuntu-latest' }
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                - task: AzurePowerShell@5
+                  displayName: Stop existing triggers
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    ScriptType: InlineScript
+                    Inline: |
+                      Get-AzDataFactoryV2Trigger -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)' |
+                        Where-Object RuntimeState -eq 'Started' |
+                        ForEach-Object { Stop-AzDataFactoryV2Trigger -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)' -Name $_.Name -Force }
+                    azurePowerShellVersion: LatestVersion
+                - task: AzureResourceManagerTemplateDeployment@3
+                  displayName: Incremental ARM deployment
+                  inputs:
+                    deploymentScope: Resource Group
+                    azureResourceManagerConnection: '$(azureServiceConnection)'
+                    subscriptionId: '$(azureSubscriptionId)'
+                    action: 'Create Or Update Resource Group'
+                    resourceGroupName: '$(resourceGroupName)'
+                    location: '$(azureLocation)'
+                    templateLocation: 'Linked artifact'
+                    csmFile: '$(templateFile)'
+                    csmParametersFile: '$(parametersFile)'
+                    overrideParameters: >-
+                      -factoryName "$(dataFactoryName)"
+                      -ls_keyvault_properties_parameters_baseUrl_defaultValue "$(keyVaultUrl)"
+                      -ls_adls_kv_properties_parameters_keyVaultUrl_defaultValue "$(keyVaultUrl)"
+                      -ls_sql_kv_properties_parameters_keyVaultUrl_defaultValue "$(keyVaultUrl)"
+                      -tr_event_sales_properties_typeProperties_scope "$(storageAccountResourceId)"
+                    deploymentMode: Incremental
+                - task: AzurePowerShell@5
+                  displayName: Set environment global parameters
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    ScriptType: InlineScript
+                    Inline: |
+                      $factoryId = "/subscriptions/$(azureSubscriptionId)/resourceGroups/$(resourceGroupName)/providers/Microsoft.DataFactory/factories/$(dataFactoryName)"
+                      $payload = @{
+                        properties = @{
+                          globalParameters = @{
+                            environment = @{ type = 'String'; value = '${{ upper(parameters.deployEnvironment) }}' }
+                            logicAppCallbackUrl = @{ type = 'String'; value = '$(logicAppCallbackUrl)' }
+                          }
+                        }
+                      } | ConvertTo-Json -Depth 8
+                      Invoke-AzRestMethod -Method PATCH -Path "$factoryId?api-version=2018-06-01" -Payload $payload | Out-Null
+                    azurePowerShellVersion: LatestVersion
+                - task: AzurePowerShell@5
+                  displayName: Start deployed triggers
+                  inputs:
+                    azureSubscription: '$(azureServiceConnection)'
+                    ScriptType: InlineScript
+                    Inline: |
+                      'tr_schedule_daily','tr_event_sales' | ForEach-Object {
+                        Start-AzDataFactoryV2Trigger -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)' -Name $_ -Force
+                      }
+                    azurePowerShellVersion: LatestVersion

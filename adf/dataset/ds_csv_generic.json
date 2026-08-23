@@ -1,0 +1,29 @@
+{
+  "name": "ds_csv_generic",
+  "properties": {
+    "linkedServiceName": {
+      "referenceName": "ls_adls_kv",
+      "type": "LinkedServiceReference"
+    },
+    "parameters": {
+      "container": { "type": "string", "defaultValue": "landing" },
+      "folder": { "type": "string" },
+      "file": { "type": "string", "defaultValue": "__FOLDER__" }
+    },
+    "annotations": ["NMDP-101", "Reusable CSV"],
+    "type": "DelimitedText",
+    "typeProperties": {
+      "location": {
+        "type": "AzureBlobStorageLocation",
+        "container": "@dataset().container",
+        "folderPath": "@dataset().folder",
+        "fileName": "@if(equals(dataset().file, '__FOLDER__'), null, dataset().file)"
+      },
+      "columnDelimiter": ",",
+      "escapeChar": "\\",
+      "firstRowAsHeader": true,
+      "quoteChar": "\""
+    },
+    "schema": []
+  }
+}

@@ -1,0 +1,186 @@
+{
+  "name": "pl_sales_ingest_daily",
+  "properties": {
+    "description": "Metadata-driven incremental parent pipeline. Lists, filters, and dispatches sales files; advances watermark only after the batch.",
+    "annotations": ["NMDP-102", "NMDP-105", "NMDP-107", "Incremental", "Sales"],
+    "parameters": {
+      "container": { "type": "string", "defaultValue": "landing" },
+      "folder": { "type": "string", "defaultValue": "source_data/partner_drops/daily_sales" },
+      "triggerFileName": { "type": "string", "defaultValue": "" },
+      "logicAppUrl": { "type": "string", "defaultValue": "" }
+    },
+    "activities": [
+      {
+        "name": "Get Sales Files",
+        "type": "GetMetadata",
+        "dependsOn": [],
+        "policy": { "timeout": "0.00:10:00", "retry": 2, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "userProperties": [{ "name": "Folder", "value": "@pipeline().parameters.folder" }],
+        "typeProperties": {
+          "dataset": {
+            "referenceName": "ds_csv_generic",
+            "type": "DatasetReference",
+            "parameters": { "container": "@pipeline().parameters.container", "folder": "@pipeline().parameters.folder", "file": "__FOLDER__" }
+          },
+          "fieldList": ["childItems"],
+          "storeSettings": { "type": "AzureBlobStorageReadSettings", "enablePartitionDiscovery": false },
+          "formatSettings": { "type": "DelimitedTextReadSettings" }
+        }
+      },
+      {
+        "name": "Lookup Sales Watermark",
+        "type": "Lookup",
+        "dependsOn": [],
+        "policy": { "timeout": "0.00:10:00", "retry": 2, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource",
+            "sqlReaderQuery": "SELECT CONVERT(varchar(33), WatermarkValue, 127) AS WatermarkValue FROM dbo.LoadWatermark WHERE TableName = 'FactSales'",
+            "queryTimeout": "02:00:00",
+            "partitionOption": "None"
+          },
+          "dataset": {
+            "referenceName": "ds_sql_table",
+            "type": "DatasetReference",
+            "parameters": { "schemaName": "dbo", "tableName": "LoadWatermark" }
+          },
+          "firstRowOnly": true
+        }
+      },
+      {
+        "name": "Filter New CSV Files",
+        "description": "Schedule runs compare filename dates to the watermark; event runs select the exact blob and rely on file-scoped idempotency.",
+        "type": "Filter",
+        "dependsOn": [
+          { "activity": "Get Sales Files", "dependencyConditions": ["Succeeded"] },
+          { "activity": "Lookup Sales Watermark", "dependencyConditions": ["Succeeded"] }
+        ],
+        "typeProperties": {
+          "items": { "value": "@activity('Get Sales Files').output.childItems", "type": "Expression" },
+          "condition": {
+            "value": "@and(and(equals(item().type, 'File'), endswith(toLower(item().name), '.csv')), and(startswith(toLower(item().name), 'sales_'), if(empty(pipeline().parameters.triggerFileName), greater(substring(item().name, 6, 8), formatDateTime(activity('Lookup Sales Watermark').output.firstRow.WatermarkValue, 'yyyyMMdd')), equals(item().name, pipeline().parameters.triggerFileName))))",
+            "type": "Expression"
+          }
+        }
+      },
+      {
+        "name": "ForEach Sales File",
+        "type": "ForEach",
+        "dependsOn": [{ "activity": "Filter New CSV Files", "dependencyConditions": ["Succeeded"] }],
+        "typeProperties": {
+          "items": { "value": "@activity('Filter New CSV Files').output.value", "type": "Expression" },
+          "isSequential": false,
+          "batchCount": 4,
+          "activities": [
+            {
+              "name": "Load One Sales File",
+              "type": "ExecutePipeline",
+              "dependsOn": [],
+              "userProperties": [{ "name": "SourceFile", "value": "@item().name" }],
+              "typeProperties": {
+                "pipeline": { "referenceName": "pl_sales_load_file", "type": "PipelineReference" },
+                "waitOnCompletion": true,
+                "parameters": {
+                  "container": { "value": "@pipeline().parameters.container", "type": "Expression" },
+                  "folder": { "value": "@pipeline().parameters.folder", "type": "Expression" },
+                  "fileName": { "value": "@item().name", "type": "Expression" },
+                  "logicAppUrl": { "value": "@if(empty(pipeline().parameters.logicAppUrl), pipeline().globalParameters.logicAppCallbackUrl, pipeline().parameters.logicAppUrl)", "type": "Expression" }
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "Lookup Max Sales Timestamp",
+        "type": "Lookup",
+        "dependsOn": [{ "activity": "ForEach Sales File", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.00:10:00", "retry": 2, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource",
+            "sqlReaderQuery": "SELECT CONVERT(varchar(33), MAX(OrderTimestamp), 127) AS MaxTimestamp FROM dbo.FactSales",
+            "queryTimeout": "02:00:00",
+            "partitionOption": "None"
+          },
+          "dataset": {
+            "referenceName": "ds_sql_table",
+            "type": "DatasetReference",
+            "parameters": { "schemaName": "dbo", "tableName": "FactSales" }
+          },
+          "firstRowOnly": true
+        }
+      },
+      {
+        "name": "If Sales Exist",
+        "type": "IfCondition",
+        "dependsOn": [{ "activity": "Lookup Max Sales Timestamp", "dependencyConditions": ["Succeeded"] }],
+        "typeProperties": {
+          "expression": { "value": "@not(empty(activity('Lookup Max Sales Timestamp').output.firstRow.MaxTimestamp))", "type": "Expression" },
+          "ifTrueActivities": [
+            {
+              "name": "Advance Sales Watermark",
+              "type": "SqlServerStoredProcedure",
+              "dependsOn": [],
+              "linkedServiceName": { "referenceName": "ls_sql_kv", "type": "LinkedServiceReference" },
+              "typeProperties": {
+                "storedProcedureName": "dbo.UpdateWatermark",
+                "storedProcedureParameters": {
+                  "TableName": { "value": "FactSales", "type": "String" },
+                  "NewValue": { "value": { "value": "@activity('Lookup Max Sales Timestamp').output.firstRow.MaxTimestamp", "type": "Expression" }, "type": "DateTime" }
+                }
+              }
+            }
+          ],
+          "ifFalseActivities": []
+        }
+      },
+      {
+        "name": "Notify Metadata Failure",
+        "type": "ExecutePipeline",
+        "dependsOn": [{ "activity": "Get Sales Files", "dependencyConditions": ["Failed"] }],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_notify_failure", "type": "PipelineReference" },
+          "waitOnCompletion": true,
+          "parameters": {
+            "logicAppUrl": { "value": "@if(empty(pipeline().parameters.logicAppUrl), pipeline().globalParameters.logicAppCallbackUrl, pipeline().parameters.logicAppUrl)", "type": "Expression" },
+            "failedPipeline": { "value": "@pipeline().Pipeline", "type": "Expression" },
+            "failedRunId": { "value": "@pipeline().RunId", "type": "Expression" },
+            "failureMessage": { "value": "@activity('Get Sales Files').error.message", "type": "Expression" }
+          }
+        }
+      },
+      {
+        "name": "Notify Watermark Failure",
+        "type": "ExecutePipeline",
+        "dependsOn": [{ "activity": "Lookup Sales Watermark", "dependencyConditions": ["Failed"] }],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_notify_failure", "type": "PipelineReference" },
+          "waitOnCompletion": true,
+          "parameters": {
+            "logicAppUrl": { "value": "@if(empty(pipeline().parameters.logicAppUrl), pipeline().globalParameters.logicAppCallbackUrl, pipeline().parameters.logicAppUrl)", "type": "Expression" },
+            "failedPipeline": { "value": "@pipeline().Pipeline", "type": "Expression" },
+            "failedRunId": { "value": "@pipeline().RunId", "type": "Expression" },
+            "failureMessage": { "value": "@activity('Lookup Sales Watermark').error.message", "type": "Expression" }
+          }
+        }
+      },
+      {
+        "name": "Notify Batch Failure",
+        "type": "ExecutePipeline",
+        "dependsOn": [{ "activity": "ForEach Sales File", "dependencyConditions": ["Failed"] }],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_notify_failure", "type": "PipelineReference" },
+          "waitOnCompletion": true,
+          "parameters": {
+            "logicAppUrl": { "value": "@if(empty(pipeline().parameters.logicAppUrl), pipeline().globalParameters.logicAppCallbackUrl, pipeline().parameters.logicAppUrl)", "type": "Expression" },
+            "failedPipeline": { "value": "@pipeline().Pipeline", "type": "Expression" },
+            "failedRunId": { "value": "@pipeline().RunId", "type": "Expression" },
+            "failureMessage": { "value": "@activity('ForEach Sales File').error.message", "type": "Expression" }
+          }
+        }
+      }
+    ],
+    "folder": { "name": "Sales" }
+  }
+}

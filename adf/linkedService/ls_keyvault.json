@@ -1,0 +1,16 @@
+{
+  "name": "ls_keyvault",
+  "properties": {
+    "annotations": ["NMDP-101", "Key Vault"],
+    "parameters": {
+      "baseUrl": {
+        "type": "String",
+        "defaultValue": "https://kv-novamart-dev.vault.azure.net/"
+      }
+    },
+    "type": "AzureKeyVault",
+    "typeProperties": {
+      "baseUrl": "@{linkedService().baseUrl}"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "tr_event_sales",
+  "properties": {
+    "description": "Starts the sales parent as soon as a non-empty CSV arrives in daily_sales.",
+    "annotations": ["NMDP-109", "Blob-created event"],
+    "runtimeState": "Stopped",
+    "pipelines": [
+      {
+        "pipelineReference": { "referenceName": "pl_sales_ingest_daily", "type": "PipelineReference" },
+        "parameters": {
+          "triggerFileName": "@triggerBody().fileName"
+        }
+      }
+    ],
+    "type": "BlobEventsTrigger",
+    "typeProperties": {
+      "blobPathBeginsWith": "/landing/blobs/source_data/partner_drops/daily_sales/",
+      "blobPathEndsWith": ".csv",
+      "ignoreEmptyBlobs": true,
+      "scope": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-novamart-dev/providers/Microsoft.Storage/storageAccounts/stnovamartdev0000000",
+      "events": ["Microsoft.Storage.BlobCreated"]
+    }
+  }
+}

@@ -45,7 +45,13 @@ CREATE OR ALTER PROCEDURE dbo.InsertFileMetadata
 AS
 BEGIN
     SET NOCOUNT ON;
-    INSERT INTO dbo.FileMetadata (FileName, ModifiedAt) VALUES (@FileName, @ModifiedAt);
+    UPDATE dbo.FileMetadata
+       SET ModifiedAt = @ModifiedAt,
+           UpdatedAt = SYSUTCDATETIME()
+     WHERE FileName = @FileName;
+
+    IF @@ROWCOUNT = 0
+        INSERT INTO dbo.FileMetadata (FileName, ModifiedAt) VALUES (@FileName, @ModifiedAt);
 END;
 GO
 
@@ -71,5 +77,57 @@ AS
 BEGIN
     SET NOCOUNT ON;
     UPDATE dbo.LoadWatermark SET WatermarkValue = @NewValue WHERE TableName = @TableName;
+    IF @@ROWCOUNT = 0
+        INSERT INTO dbo.LoadWatermark (TableName, WatermarkValue) VALUES (@TableName, @NewValue);
+END;
+GO
+
+/* Delete only the rows owned by one source file before it is copied again.
+   This makes a retry deterministic without truncating other days. */
+CREATE OR ALTER PROCEDURE dbo.DeleteSalesBySourceFile
+    @SourceFileName NVARCHAR(260)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    DELETE FROM dbo.FactSales WHERE SourceFileName = @SourceFileName;
+END;
+GO
+
+/* Apply a fully landed customer snapshot as one atomic SCD Type 2 transaction. */
+CREATE OR ALTER PROCEDURE dbo.ApplyCustomerSCD2
+    @EffectiveFrom DATETIME2
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+    BEGIN TRANSACTION;
+
+    UPDATE currentVersion
+       SET currentVersion.IsCurrent = 0,
+           currentVersion.EffectiveTo = @EffectiveFrom
+      FROM dbo.DimCustomer AS currentVersion
+      JOIN dbo.StgCustomer AS snapshot
+        ON snapshot.CustomerID = currentVersion.CustomerID
+     WHERE currentVersion.IsCurrent = 1
+       AND (
+            ISNULL(currentVersion.FirstName, '')   <> ISNULL(snapshot.FirstName, '') OR
+            ISNULL(currentVersion.LastName, '')    <> ISNULL(snapshot.LastName, '') OR
+            ISNULL(currentVersion.Email, '')       <> ISNULL(snapshot.Email, '') OR
+            ISNULL(currentVersion.City, '')        <> ISNULL(snapshot.City, '') OR
+            ISNULL(currentVersion.LoyaltyTier, '') <> ISNULL(snapshot.LoyaltyTier, '')
+       );
+
+    INSERT INTO dbo.DimCustomer
+        (CustomerID, FirstName, LastName, Email, City, LoyaltyTier, IsCurrent, EffectiveFrom, EffectiveTo)
+    SELECT snapshot.CustomerID, snapshot.FirstName, snapshot.LastName, snapshot.Email,
+           snapshot.City, snapshot.LoyaltyTier, 1, @EffectiveFrom, NULL
+      FROM dbo.StgCustomer AS snapshot
+      LEFT JOIN dbo.DimCustomer AS currentVersion
+        ON currentVersion.CustomerID = snapshot.CustomerID
+       AND currentVersion.IsCurrent = 1
+     WHERE currentVersion.CustomerSK IS NULL;
+
+    COMMIT TRANSACTION;
 END;
 GO

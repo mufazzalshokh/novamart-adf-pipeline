@@ -1,0 +1,30 @@
+{
+  "name": "ls_sql_kv",
+  "properties": {
+    "annotations": ["NMDP-101", "Secret from Key Vault"],
+    "parameters": {
+      "keyVaultUrl": {
+        "type": "String",
+        "defaultValue": "https://kv-novamart-dev.vault.azure.net/"
+      },
+      "secretName": {
+        "type": "String",
+        "defaultValue": "sql-connection-string"
+      }
+    },
+    "type": "AzureSqlDatabase",
+    "typeProperties": {
+      "connectionString": {
+        "type": "AzureKeyVaultSecret",
+        "store": {
+          "referenceName": "ls_keyvault",
+          "type": "LinkedServiceReference",
+          "parameters": {
+            "baseUrl": "@linkedService().keyVaultUrl"
+          }
+        },
+        "secretName": "@linkedService().secretName"
+      }
+    }
+  }
+}

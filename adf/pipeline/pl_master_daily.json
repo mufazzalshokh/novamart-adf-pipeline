@@ -1,0 +1,38 @@
+{
+  "name": "pl_master_daily",
+  "properties": {
+    "description": "Daily orchestration entry point for reference dimensions followed by incremental sales.",
+    "annotations": ["NMDP-109", "Master", "Daily orchestration"],
+    "parameters": {
+      "logicAppUrl": { "type": "string", "defaultValue": "" }
+    },
+    "activities": [
+      {
+        "name": "Load Reference Dimensions",
+        "type": "ExecutePipeline",
+        "dependsOn": [],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_dimensions_load", "type": "PipelineReference" },
+          "waitOnCompletion": true,
+          "parameters": {
+            "logicAppUrl": { "value": "@if(empty(pipeline().parameters.logicAppUrl), pipeline().globalParameters.logicAppCallbackUrl, pipeline().parameters.logicAppUrl)", "type": "Expression" }
+          }
+        }
+      },
+      {
+        "name": "Load Incremental Sales",
+        "type": "ExecutePipeline",
+        "dependsOn": [{ "activity": "Load Reference Dimensions", "dependencyConditions": ["Completed"] }],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_sales_ingest_daily", "type": "PipelineReference" },
+          "waitOnCompletion": true,
+          "parameters": {
+            "triggerFileName": "",
+            "logicAppUrl": { "value": "@if(empty(pipeline().parameters.logicAppUrl), pipeline().globalParameters.logicAppCallbackUrl, pipeline().parameters.logicAppUrl)", "type": "Expression" }
+          }
+        }
+      }
+    ],
+    "folder": { "name": "Orchestration" }
+  }
+}

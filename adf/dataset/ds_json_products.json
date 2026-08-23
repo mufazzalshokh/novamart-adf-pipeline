@@ -1,0 +1,26 @@
+{
+  "name": "ds_json_products",
+  "properties": {
+    "linkedServiceName": {
+      "referenceName": "ls_adls_kv",
+      "type": "LinkedServiceReference"
+    },
+    "parameters": {
+      "container": { "type": "string", "defaultValue": "landing" },
+      "folder": { "type": "string", "defaultValue": "source_data/partner_drops/products" },
+      "file": { "type": "string", "defaultValue": "product_catalog.json" }
+    },
+    "annotations": ["NMDP-104", "Nested product JSON"],
+    "type": "Json",
+    "typeProperties": {
+      "location": {
+        "type": "AzureBlobStorageLocation",
+        "container": "@dataset().container",
+        "folderPath": "@dataset().folder",
+        "fileName": "@dataset().file"
+      },
+      "encodingName": "UTF-8"
+    },
+    "schema": {}
+  }
+}

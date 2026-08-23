@@ -63,3 +63,40 @@ CREATE TABLE dbo.FactSales (
     LoadedAt       DATETIME2     DEFAULT SYSUTCDATETIME()
 );
 GO
+
+/* Snapshot staging is truncated and reloaded by df_scd_customer. */
+IF OBJECT_ID('dbo.StgCustomer') IS NULL
+CREATE TABLE dbo.StgCustomer (
+    CustomerID    INT           NOT NULL,
+    FirstName     NVARCHAR(60),
+    LastName      NVARCHAR(60),
+    Email         NVARCHAR(120),
+    City          NVARCHAR(80),
+    LoyaltyTier   NVARCHAR(20)
+);
+GO
+
+/* Idempotency and SCD integrity constraints.  These are safe to rerun. */
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID('dbo.FactSales') AND name = 'UX_FactSales_OrderID'
+)
+    CREATE UNIQUE INDEX UX_FactSales_OrderID ON dbo.FactSales (OrderID);
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID('dbo.DimCustomer') AND name = 'UX_DimCustomer_Current'
+)
+    CREATE UNIQUE INDEX UX_DimCustomer_Current
+        ON dbo.DimCustomer (CustomerID)
+        WHERE IsCurrent = 1;
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes
+    WHERE object_id = OBJECT_ID('dbo.DimCustomer') AND name = 'IX_DimCustomer_BusinessDate'
+)
+    CREATE INDEX IX_DimCustomer_BusinessDate
+        ON dbo.DimCustomer (CustomerID, EffectiveFrom, EffectiveTo);
+GO

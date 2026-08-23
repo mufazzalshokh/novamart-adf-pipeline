@@ -1,0 +1,16 @@
+# Local deployment outputs and credentials
+*.local.json
+*.secrets.json
+.env
+
+# Editor / OS files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ADF local build scratch
+node_modules/
+dist/
+.tools/
+downloads/

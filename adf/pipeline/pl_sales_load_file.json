@@ -1,0 +1,252 @@
+{
+  "name": "pl_sales_load_file",
+  "properties": {
+    "description": "Reusable per-file sales loader with audit lineage, idempotency, rejected-row logging, and notification.",
+    "annotations": ["NMDP-102", "NMDP-103", "NMDP-107", "Sales"],
+    "parameters": {
+      "container": { "type": "string", "defaultValue": "landing" },
+      "folder": { "type": "string", "defaultValue": "source_data/partner_drops/daily_sales" },
+      "fileName": { "type": "string" },
+      "logicAppUrl": { "type": "string" }
+    },
+    "variables": {
+      "RunSeqNo": { "type": "String" }
+    },
+    "activities": [
+      {
+        "name": "Log Pipeline Start",
+        "type": "Lookup",
+        "dependsOn": [],
+        "policy": { "timeout": "0.00:10:00", "retry": 2, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "typeProperties": {
+          "source": {
+            "type": "AzureSqlSource",
+            "sqlReaderStoredProcedureName": "dbo.LogPipelineStart",
+            "storedProcedureParameters": {
+              "PipelineName": { "type": "String", "value": { "value": "@pipeline().Pipeline", "type": "Expression" } },
+              "PipelineRunId": { "type": "String", "value": { "value": "@pipeline().RunId", "type": "Expression" } },
+              "Comments": { "type": "String", "value": { "value": "@concat('Environment=', pipeline().globalParameters.environment, '; File=', pipeline().parameters.fileName)", "type": "Expression" } }
+            },
+            "queryTimeout": "02:00:00",
+            "partitionOption": "None"
+          },
+          "dataset": {
+            "referenceName": "ds_sql_table",
+            "type": "DatasetReference",
+            "parameters": { "schemaName": "dbo", "tableName": "PipelineExecution" }
+          },
+          "firstRowOnly": true
+        }
+      },
+      {
+        "name": "Set Run Sequence",
+        "type": "SetVariable",
+        "dependsOn": [{ "activity": "Log Pipeline Start", "dependencyConditions": ["Succeeded"] }],
+        "typeProperties": {
+          "variableName": "RunSeqNo",
+          "value": { "value": "@string(activity('Log Pipeline Start').output.firstRow.RunSeqNo)", "type": "Expression" }
+        }
+      },
+      {
+        "name": "Delete Existing File Rows",
+        "description": "File-scoped idempotency: retrying one day never truncates another day.",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [{ "activity": "Set Run Sequence", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.00:10:00", "retry": 2, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "linkedServiceName": { "referenceName": "ls_sql_kv", "type": "LinkedServiceReference" },
+        "typeProperties": {
+          "storedProcedureName": "dbo.DeleteSalesBySourceFile",
+          "storedProcedureParameters": {
+            "SourceFileName": { "value": { "value": "@pipeline().parameters.fileName", "type": "Expression" }, "type": "String" }
+          }
+        }
+      },
+      {
+        "name": "Get File Metadata",
+        "type": "GetMetadata",
+        "dependsOn": [{ "activity": "Set Run Sequence", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.00:10:00", "retry": 2, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "typeProperties": {
+          "dataset": {
+            "referenceName": "ds_csv_generic",
+            "type": "DatasetReference",
+            "parameters": { "container": "@pipeline().parameters.container", "folder": "@pipeline().parameters.folder", "file": "@pipeline().parameters.fileName" }
+          },
+          "fieldList": ["lastModified"],
+          "storeSettings": { "type": "AzureBlobStorageReadSettings", "enablePartitionDiscovery": false },
+          "formatSettings": { "type": "DelimitedTextReadSettings" }
+        }
+      },
+      {
+        "name": "Record File Metadata",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [{ "activity": "Get File Metadata", "dependencyConditions": ["Succeeded"] }],
+        "linkedServiceName": { "referenceName": "ls_sql_kv", "type": "LinkedServiceReference" },
+        "typeProperties": {
+          "storedProcedureName": "dbo.InsertFileMetadata",
+          "storedProcedureParameters": {
+            "FileName": { "value": { "value": "@pipeline().parameters.fileName", "type": "Expression" }, "type": "String" },
+            "ModifiedAt": { "value": { "value": "@activity('Get File Metadata').output.lastModified", "type": "Expression" }, "type": "DateTime" }
+          }
+        }
+      },
+      {
+        "name": "Copy Sales File",
+        "description": "Malformed rows are skipped and logged; compatible rows from the same file still load.",
+        "type": "Copy",
+        "dependsOn": [
+          { "activity": "Delete Existing File Rows", "dependencyConditions": ["Succeeded"] },
+          { "activity": "Record File Metadata", "dependencyConditions": ["Succeeded"] }
+        ],
+        "policy": { "timeout": "0.01:00:00", "retry": 1, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "userProperties": [
+          { "name": "SourceFile", "value": "@pipeline().parameters.fileName" },
+          { "name": "Sink", "value": "dbo.FactSales" },
+          { "name": "RunSeqNo", "value": "@variables('RunSeqNo')" }
+        ],
+        "typeProperties": {
+          "source": {
+            "type": "DelimitedTextSource",
+            "additionalColumns": [
+              { "name": "SourceFileName", "value": "@pipeline().parameters.fileName" },
+              { "name": "PipelineRunId", "value": "@pipeline().RunId" },
+              { "name": "RunSeqNo", "value": "@variables('RunSeqNo')" }
+            ],
+            "storeSettings": { "type": "AzureBlobStorageReadSettings", "recursive": false, "enablePartitionDiscovery": false },
+            "formatSettings": { "type": "DelimitedTextReadSettings" }
+          },
+          "sink": {
+            "type": "AzureSqlSink",
+            "writeBehavior": "insert",
+            "sqlWriterUseTableLock": false,
+            "disableMetricsCollection": false
+          },
+          "enableStaging": false,
+          "enableSkipIncompatibleRow": true,
+          "logSettings": {
+            "enableCopyActivityLog": true,
+            "copyActivityLogSettings": { "logLevel": "Warning", "enableReliableLogging": true },
+            "logLocationSettings": {
+              "linkedServiceName": { "referenceName": "ls_adls_kv", "type": "LinkedServiceReference" },
+              "path": "adf-copy-logs/sales"
+            }
+          },
+          "translator": {
+            "type": "TabularTranslator",
+            "typeConversion": true,
+            "typeConversionSettings": { "allowDataTruncation": false, "treatBooleanAsNumber": false },
+            "mappings": [
+              { "source": { "name": "OrderID", "type": "String" }, "sink": { "name": "OrderID", "type": "Int64" } },
+              { "source": { "name": "OrderTimestamp", "type": "String" }, "sink": { "name": "OrderTimestamp", "type": "DateTime" } },
+              { "source": { "name": "StoreID", "type": "String" }, "sink": { "name": "StoreID", "type": "Int32" } },
+              { "source": { "name": "CustomerID", "type": "String" }, "sink": { "name": "CustomerID", "type": "Int32" } },
+              { "source": { "name": "SKU", "type": "String" }, "sink": { "name": "SKU", "type": "String" } },
+              { "source": { "name": "Quantity", "type": "String" }, "sink": { "name": "Quantity", "type": "Int32" } },
+              { "source": { "name": "UnitPrice", "type": "String" }, "sink": { "name": "UnitPrice", "type": "Decimal" } },
+              { "source": { "name": "DiscountPct", "type": "String" }, "sink": { "name": "DiscountPct", "type": "Int32" } },
+              { "source": { "name": "LineTotal", "type": "String" }, "sink": { "name": "LineTotal", "type": "Decimal" } },
+              { "source": { "name": "SourceFileName", "type": "String" }, "sink": { "name": "SourceFileName", "type": "String" } },
+              { "source": { "name": "PipelineRunId", "type": "String" }, "sink": { "name": "PipelineRunId", "type": "String" } },
+              { "source": { "name": "RunSeqNo", "type": "String" }, "sink": { "name": "RunSeqNo", "type": "Int32" } }
+            ]
+          }
+        },
+        "inputs": [{
+          "referenceName": "ds_csv_generic",
+          "type": "DatasetReference",
+          "parameters": { "container": "@pipeline().parameters.container", "folder": "@pipeline().parameters.folder", "file": "@pipeline().parameters.fileName" }
+        }],
+        "outputs": [{
+          "referenceName": "ds_sql_table",
+          "type": "DatasetReference",
+          "parameters": { "schemaName": "dbo", "tableName": "FactSales" }
+        }]
+      },
+      {
+        "name": "If Rejected Rows",
+        "description": "Checked branch required by NMDP-107; a malformed row is observable without aborting the file.",
+        "type": "IfCondition",
+        "dependsOn": [{ "activity": "Copy Sales File", "dependencyConditions": ["Succeeded"] }],
+        "typeProperties": {
+          "expression": { "value": "@greater(int(coalesce(activity('Copy Sales File').output.rowsSkipped, 0)), 0)", "type": "Expression" },
+          "ifTrueActivities": [
+            {
+              "name": "Log Rejected Rows",
+              "type": "SqlServerStoredProcedure",
+              "dependsOn": [],
+              "linkedServiceName": { "referenceName": "ls_sql_kv", "type": "LinkedServiceReference" },
+              "typeProperties": {
+                "storedProcedureName": "dbo.InsertLoadingError",
+                "storedProcedureParameters": {
+                  "PipelineName": { "value": { "value": "@pipeline().Pipeline", "type": "Expression" }, "type": "String" },
+                  "PipelineRunId": { "value": { "value": "@pipeline().RunId", "type": "Expression" }, "type": "String" },
+                  "ActivityName": { "value": "Copy Sales File", "type": "String" },
+                  "ErrorMessage": { "value": { "value": "@concat('Rejected ', string(activity('Copy Sales File').output.rowsSkipped), ' malformed row(s) from ', pipeline().parameters.fileName, '. Details: adf-copy-logs/sales')", "type": "Expression" }, "type": "String" }
+                }
+              }
+            }
+          ],
+          "ifFalseActivities": []
+        }
+      },
+      {
+        "name": "Log Pipeline Success",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [{ "activity": "If Rejected Rows", "dependencyConditions": ["Succeeded"] }],
+        "linkedServiceName": { "referenceName": "ls_sql_kv", "type": "LinkedServiceReference" },
+        "typeProperties": {
+          "storedProcedureName": "dbo.LogPipelineEnd",
+          "storedProcedureParameters": {
+            "RunSeqNo": { "value": { "value": "@int(variables('RunSeqNo'))", "type": "Expression" }, "type": "Int32" },
+            "Status": { "value": "Success", "type": "String" },
+            "RowsRead": { "value": { "value": "@int(activity('Copy Sales File').output.rowsRead)", "type": "Expression" }, "type": "Int64" },
+            "RowsCopied": { "value": { "value": "@int(activity('Copy Sales File').output.rowsCopied)", "type": "Expression" }, "type": "Int64" },
+            "FilesRead": { "value": 1, "type": "Int32" }
+          }
+        }
+      },
+      {
+        "name": "Log Copy Failure",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [{ "activity": "Copy Sales File", "dependencyConditions": ["Failed"] }],
+        "linkedServiceName": { "referenceName": "ls_sql_kv", "type": "LinkedServiceReference" },
+        "typeProperties": {
+          "storedProcedureName": "dbo.InsertLoadingError",
+          "storedProcedureParameters": {
+            "PipelineName": { "value": { "value": "@pipeline().Pipeline", "type": "Expression" }, "type": "String" },
+            "PipelineRunId": { "value": { "value": "@pipeline().RunId", "type": "Expression" }, "type": "String" },
+            "ActivityName": { "value": "Copy Sales File", "type": "String" },
+            "ErrorMessage": { "value": { "value": "@concat('File=', pipeline().parameters.fileName, '; ', activity('Copy Sales File').error.message)", "type": "Expression" }, "type": "String" }
+          }
+        }
+      },
+      {
+        "name": "Log Pipeline Failure",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [{ "activity": "Log Copy Failure", "dependencyConditions": ["Succeeded"] }],
+        "linkedServiceName": { "referenceName": "ls_sql_kv", "type": "LinkedServiceReference" },
+        "typeProperties": {
+          "storedProcedureName": "dbo.LogPipelineEnd",
+          "storedProcedureParameters": {
+            "RunSeqNo": { "value": { "value": "@int(variables('RunSeqNo'))", "type": "Expression" }, "type": "Int32" },
+            "Status": { "value": "Failure", "type": "String" },
+            "RowsRead": { "value": null, "type": "Int64" },
+            "RowsCopied": { "value": null, "type": "Int64" },
+            "FilesRead": { "value": 1, "type": "Int32" }
+          }
+        }
+      },
+      {
+        "name": "Fail File Load",
+        "description": "Propagate fatal Copy failure so the parent does not advance past an unloaded file.",
+        "type": "Fail",
+        "dependsOn": [{ "activity": "Log Pipeline Failure", "dependencyConditions": ["Succeeded"] }],
+        "typeProperties": {
+          "message": { "value": "@concat('Sales Copy failed for ', pipeline().parameters.fileName)", "type": "Expression" },
+          "errorCode": "NMDP_SALES_COPY_FAILED"
+        }
+      }
+    ],
+    "folder": { "name": "Sales" }
+  }
+}

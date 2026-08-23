@@ -1,0 +1,110 @@
+{
+  "name": "pl_customer_scd",
+  "properties": {
+    "description": "Runs the customer SCD2 mapping data flow for a dated snapshot.",
+    "annotations": ["NMDP-106", "SCD Type 2", "Customer"],
+    "parameters": {
+      "fileName": { "type": "string", "defaultValue": "customers_20260720.csv" },
+      "effectiveFrom": { "type": "string", "defaultValue": "2026-07-20T00:00:00Z" },
+      "logicAppUrl": { "type": "string", "defaultValue": "" }
+    },
+    "activities": [
+      {
+        "name": "Land Customer Snapshot",
+        "type": "ExecuteDataFlow",
+        "dependsOn": [],
+        "policy": { "timeout": "0.02:00:00", "retry": 1, "retryIntervalInSeconds": 60, "secureOutput": false, "secureInput": false },
+        "userProperties": [
+          { "name": "Snapshot", "value": "@pipeline().parameters.fileName" },
+          { "name": "Pattern", "value": "SCD Type 2" }
+        ],
+        "typeProperties": {
+          "dataflow": {
+            "referenceName": "df_scd_customer",
+            "type": "DataFlowReference",
+            "parameters": {
+              "customerFile": { "value": "@pipeline().parameters.fileName", "type": "Expression" }
+            },
+            "datasetParameters": {
+              "CustomerSnapshot": {
+                "container": "landing",
+                "folder": "source_data/customers",
+                "file": { "value": "@pipeline().parameters.fileName", "type": "Expression" }
+              },
+              "StageCustomer": {
+                "schemaName": "dbo",
+                "tableName": "StgCustomer"
+              }
+            }
+          },
+          "compute": { "coreCount": 8, "computeType": "General" },
+          "traceLevel": "Fine",
+          "runConcurrently": false
+        }
+      },
+      {
+        "name": "Apply Customer SCD2",
+        "description": "Atomic expire-before-insert apply from the Mapping Data Flow staging table.",
+        "type": "SqlServerStoredProcedure",
+        "dependsOn": [{ "activity": "Land Customer Snapshot", "dependencyConditions": ["Succeeded"] }],
+        "policy": { "timeout": "0.00:10:00", "retry": 1, "retryIntervalInSeconds": 30, "secureOutput": false, "secureInput": false },
+        "linkedServiceName": { "referenceName": "ls_sql_kv", "type": "LinkedServiceReference" },
+        "typeProperties": {
+          "storedProcedureName": "dbo.ApplyCustomerSCD2",
+          "storedProcedureParameters": {
+            "EffectiveFrom": { "value": { "value": "@pipeline().parameters.effectiveFrom", "type": "Expression" }, "type": "DateTime" }
+          }
+        }
+      },
+      {
+        "name": "Notify Snapshot Failure",
+        "type": "ExecutePipeline",
+        "dependsOn": [{ "activity": "Land Customer Snapshot", "dependencyConditions": ["Failed"] }],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_notify_failure", "type": "PipelineReference" },
+          "waitOnCompletion": true,
+          "parameters": {
+            "logicAppUrl": { "value": "@if(empty(pipeline().parameters.logicAppUrl), pipeline().globalParameters.logicAppCallbackUrl, pipeline().parameters.logicAppUrl)", "type": "Expression" },
+            "failedPipeline": { "value": "@pipeline().Pipeline", "type": "Expression" },
+            "failedRunId": { "value": "@pipeline().RunId", "type": "Expression" },
+            "failureMessage": { "value": "@activity('Land Customer Snapshot').error.message", "type": "Expression" }
+          }
+        }
+      },
+      {
+        "name": "Notify SCD Apply Failure",
+        "type": "ExecutePipeline",
+        "dependsOn": [{ "activity": "Apply Customer SCD2", "dependencyConditions": ["Failed"] }],
+        "typeProperties": {
+          "pipeline": { "referenceName": "pl_notify_failure", "type": "PipelineReference" },
+          "waitOnCompletion": true,
+          "parameters": {
+            "logicAppUrl": { "value": "@if(empty(pipeline().parameters.logicAppUrl), pipeline().globalParameters.logicAppCallbackUrl, pipeline().parameters.logicAppUrl)", "type": "Expression" },
+            "failedPipeline": { "value": "@pipeline().Pipeline", "type": "Expression" },
+            "failedRunId": { "value": "@pipeline().RunId", "type": "Expression" },
+            "failureMessage": { "value": "@activity('Apply Customer SCD2').error.message", "type": "Expression" }
+          }
+        }
+      },
+      {
+        "name": "Fail Snapshot Load",
+        "type": "Fail",
+        "dependsOn": [{ "activity": "Notify Snapshot Failure", "dependencyConditions": ["Completed"] }],
+        "typeProperties": {
+          "message": "Customer snapshot Mapping Data Flow failed; notification was attempted.",
+          "errorCode": "NMDP_CUSTOMER_SNAPSHOT_FAILED"
+        }
+      },
+      {
+        "name": "Fail SCD Apply",
+        "type": "Fail",
+        "dependsOn": [{ "activity": "Notify SCD Apply Failure", "dependencyConditions": ["Completed"] }],
+        "typeProperties": {
+          "message": "Customer SCD2 apply failed; notification was attempted.",
+          "errorCode": "NMDP_CUSTOMER_SCD_FAILED"
+        }
+      }
+    ],
+    "folder": { "name": "Customers" }
+  }
+}

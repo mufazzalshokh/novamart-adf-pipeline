@@ -1,0 +1,19 @@
+{
+  "name": "novamart-adf-dev",
+  "properties": {
+    "globalParameters": {
+      "environment": {
+        "type": "string",
+        "value": "DEV"
+      },
+      "logicAppCallbackUrl": {
+        "type": "string",
+        "value": "__SET_BY_DEPLOYMENT__"
+      }
+    },
+    "globalConfigurations": {
+      "PolicyValidationEnabled": "true"
+    }
+  },
+  "location": "eastus"
+}
