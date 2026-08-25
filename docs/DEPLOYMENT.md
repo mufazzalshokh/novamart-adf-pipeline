@@ -5,7 +5,7 @@
 - Azure Owner, or Contributor plus User Access Administrator.
 - Azure CLI, PowerShell 7, and `sqlcmd`.
 - Azure DevOps project/repo, ARM service connection, environments, and variable groups.
-- A real alert address and Microsoft 365 account for Logic App connector consent.
+- A real alert address and Google account for Gmail Logic App connector consent.
 
 Never place passwords, callback URLs, or connection strings in Git.
 
@@ -21,28 +21,34 @@ pwsh ./scripts/Deploy-Foundation.ps1 `
   -SqlAdministratorPassword $sqlPassword `
   -AlertEmailAddress 'real-oncall@company.com' `
   -NamePrefix 'youruniqueid' `
-  -Location 'eastus'
+  -Location 'eastus' `
+  -Environments dev `
+  -WhatIf
+
+# After reviewing the successful preview, run the actual DEV deployment.
+pwsh ./scripts/Deploy-Foundation.ps1 `
+  -SubscriptionId '<subscription-guid>' `
+  -SqlAdministratorLogin 'novamartadmin' `
+  -SqlAdministratorPassword $sqlPassword `
+  -AlertEmailAddress 'real-oncall@company.com' `
+  -NamePrefix 'youruniqueid' `
+  -Location 'eastus' `
+  -Environments dev
 ```
 
-This creates isolated DEV and PROD groups. Record each factory name, Key Vault URL, storage resource ID, and Logic App callback URL. The script uploads the supplied fixture.
+Deploy DEV first and verify it before spending credit on PROD. The command creates the isolated DEV group and uploads the supplied fixture. Record the factory name, Key Vault URL, storage resource ID, and Logic App name. Callback URLs are retrieved internally by deployment automation and must never be printed, committed, or stored in a non-secret variable. Near the CI/CD acceptance test, rerun the command with `-Environments prod` to create PROD.
 
-For each environment, open `office365-<environment>` → **Edit API connection → Authorize → Save**. OAuth consent cannot be automated.
+The first deployment intentionally creates the HTTP workflow without its Gmail send action. For a personal Gmail account, delete the unauthorised placeholder `gmail` connection, open the Logic App designer, temporarily add **Gmail → Send email (V2)**, and create a connection named `gmail` with **Bring your own application**. Save once so the connection persists, then rerun the deployment with `-EnableGmailAction`; Bicep replaces the temporary action but preserves the OAuth connection. OAuth consent cannot be automated. Keep the Google OAuth client in testing mode and add the sender as a test user.
 
 ## 3. Initialize Azure SQL
 
 Temporarily allow your client IP, then run against each database:
 
-```powershell
-sqlcmd -S 'tcp:<server>.database.windows.net,1433' -d sqldb-novamart -U novamartadmin -P '<runtime-secret>' -i sql/01_create_tables.sql
-sqlcmd -S 'tcp:<server>.database.windows.net,1433' -d sqldb-novamart -U novamartadmin -P '<runtime-secret>' -i sql/02_create_logging.sql
-sqlcmd -S 'tcp:<server>.database.windows.net,1433' -d sqldb-novamart -U novamartadmin -P '<runtime-secret>' -i sql/03_create_procedures.sql
-```
-
-Replace placeholder `dbo.EmailRecipient` rows, then remove the client firewall rule.
+Use `SQLCMDPASSWORD` so the password is not exposed in the process command line. Run scripts `01` through `03` with `sqlcmd -N -I -b`; every script is safe to rerun after a partial deployment. No fake notification recipients are seeded. Insert the real on-call address after initialization, then remove the temporary client firewall rule.
 
 ## 4. Connect DEV to Azure DevOps Git
 
-Configure the DEV factory with Azure DevOps Git, collaboration branch `main`, publish branch `adf_publish`, and root `/adf`. Import existing resources.
+Use Azure Repos as the ADF collaboration source and GitHub as the public portfolio mirror. Configure the DEV factory with Azure DevOps Git, collaboration branch `main`, publish branch `adf_publish`, and root `/adf`. Import existing resources.
 
 The JSON under `adf/factory/` must match the actual factory. If needed, rename the file/top-level `name` and set `location` before import. Set:
 
@@ -50,7 +56,7 @@ The JSON under `adf/factory/` must match the actual factory. If needed, rename t
 - Factory `logicAppCallbackUrl` to the DEV callback URL.
 - `tr_event_sales.typeProperties.scope` to the DEV storage resource ID.
 
-Validate, commit via a feature branch/PR, and **Publish**. Confirm the two generated ARM files appear in `adf_publish`.
+Validate, commit via a feature branch/PR, and **Publish**. Confirm the generated ARM files appear in `adf_publish`; retain this as ADF Publish evidence. The release pipeline independently validates and exports from `main`, so it does not depend on generated branches containing `azure-pipelines.yml`.
 
 ## 5. Configure Azure DevOps release
 
@@ -62,14 +68,14 @@ Create `novamart-dev` and `novamart-prod` variable groups:
 | `azureLocation` | e.g. `eastus` |
 | `resourceGroupName` | Exact environment resource group |
 | `dataFactoryName` | Exact Bicep output |
-| `adfPublishFolder` | Folder containing generated ARM, normally DEV factory name |
 | `keyVaultUrl` | `https://<vault>.vault.azure.net/` |
-| `logicAppCallbackUrl` | Callback URL; mark secret |
+| `logicAppName` | Exact Logic App workflow name; callback is retrieved at runtime |
 | `storageAccountResourceId` | Full ARM ID |
+| `startTriggers` | `false` until functional testing is complete |
 
-Create service connection `sc-novamart-azure` (or edit YAML) and add PROD approval. The pipeline validates, stops triggers, deploys ARM incrementally, then starts triggers. PROD remains non-Git.
+Create service connection `sc-novamart-azure` (or edit YAML), create Azure DevOps environment `novamart-prod`, and add its manual approval check. The `main` pipeline uses Node.js 20 and Microsoft's ADF utility to validate/export source, validates the generated ARM against PROD, stops triggers, deploys incrementally, verifies artifact counts, and starts triggers only when `startTriggers=true`. PROD remains non-Git.
 
-ADF parameter names depend on the actual factory. Compare the first generated parameters file to YAML `overrideParameters` and adjust names once if ADF generated different identifiers.
+The checked-in ARM parameter definition fixes the expected override names. Treat a generated-name change as a reviewed code change rather than editing a live release.
 
 ## 6. Functional acceptance test
 
@@ -87,4 +93,4 @@ ADF parameter names depend on the actual factory. Compare the first generated pa
 
 ## 7. Production activation
 
-Verify PROD SQL, secrets, recipients, callback URL, event scope, diagnostics, alert, and Office connector. Run a manual smoke test before enabling triggers and capture `docs/EVIDENCE.md`.
+Verify PROD SQL, secrets, recipients, callback URL, event scope, diagnostics, alert, and Gmail connector. Run a manual smoke test before enabling triggers and capture `docs/EVIDENCE.md`.

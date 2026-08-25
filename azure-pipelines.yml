@@ -1,7 +1,7 @@
 trigger:
   branches:
     include:
-      - adf_publish
+      - main
 
 pr: none
 
@@ -10,36 +10,64 @@ parameters:
     displayName: Target environment
     type: string
     default: prod
-    values: [dev, prod]
+    values:
+      - dev
+      - prod
 
 variables:
   - group: novamart-${{ parameters.deployEnvironment }}
   - name: azureServiceConnection
-    value: 'sc-novamart-azure'
-  - name: templateFile
-    value: '$(Build.SourcesDirectory)/$(adfPublishFolder)/ARMTemplateForFactory.json'
-  - name: parametersFile
-    value: '$(Build.SourcesDirectory)/$(adfPublishFolder)/ARMTemplateParametersForFactory.json'
+    value: sc-novamart-azure
+  - name: adfSourceRoot
+    value: $(Build.SourcesDirectory)/adf
+  - name: adfArmOutput
+    value: $(Build.SourcesDirectory)/adf-arm-output
+  - name: sourceFactoryResourceId
+    value: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-novamart-dev/providers/Microsoft.DataFactory/factories/novamart-adf-dev
 
 stages:
   - stage: Validate
-    displayName: Validate published ARM template
+    displayName: Validate and export ADF source
     jobs:
-      - job: ValidateTemplate
-        pool: { vmImage: 'ubuntu-latest' }
+      - job: ValidateAndExport
+        pool:
+          vmImage: ubuntu-latest
         steps:
+          - checkout: self
+            clean: true
+
+          - task: NodeTool@0
+            displayName: Use Node.js 20 LTS
+            inputs:
+              versionSpec: 20.x
+
+          - bash: |
+              set -euo pipefail
+              utility_dir="$(Agent.TempDirectory)/adf-utilities"
+              mkdir -p "$utility_dir"
+              cd "$utility_dir"
+              npm init --yes >/dev/null
+              npm install --no-save @microsoft/azure-data-factory-utilities@1.0.3
+              utility="$utility_dir/node_modules/@microsoft/azure-data-factory-utilities/lib/index.js"
+              cd "$(Build.SourcesDirectory)"
+              node "$utility" \
+                validate "$(adfSourceRoot)" "$(sourceFactoryResourceId)"
+              node "$utility" \
+                export "$(adfSourceRoot)" "$(sourceFactoryResourceId)" adf-arm-output
+            displayName: Official ADF validation and ARM export
+
           - task: AzureResourceManagerTemplateDeployment@3
-            displayName: ARM validation
+            displayName: Validate generated ARM against target
             inputs:
               deploymentScope: Resource Group
-              azureResourceManagerConnection: '$(azureServiceConnection)'
-              subscriptionId: '$(azureSubscriptionId)'
-              action: 'Create Or Update Resource Group'
-              resourceGroupName: '$(resourceGroupName)'
-              location: '$(azureLocation)'
-              templateLocation: 'Linked artifact'
-              csmFile: '$(templateFile)'
-              csmParametersFile: '$(parametersFile)'
+              azureResourceManagerConnection: $(azureServiceConnection)
+              subscriptionId: $(azureSubscriptionId)
+              action: Create Or Update Resource Group
+              resourceGroupName: $(resourceGroupName)
+              location: $(azureLocation)
+              templateLocation: Linked artifact
+              csmFile: $(adfArmOutput)/ARMTemplateForFactory.json
+              csmParametersFile: $(adfArmOutput)/ARMTemplateParametersForFactory.json
               overrideParameters: >-
                 -factoryName "$(dataFactoryName)"
                 -ls_keyvault_properties_parameters_baseUrl_defaultValue "$(keyVaultUrl)"
@@ -48,41 +76,52 @@ stages:
                 -tr_event_sales_properties_typeProperties_scope "$(storageAccountResourceId)"
               deploymentMode: Validation
 
+          - publish: $(adfArmOutput)
+            artifact: adf-arm
+            displayName: Publish generated ARM artifact
+
   - stage: Deploy
     displayName: Deploy ADF to ${{ parameters.deployEnvironment }}
     dependsOn: Validate
     condition: succeeded()
     jobs:
       - deployment: DeployFactory
-        environment: 'novamart-${{ parameters.deployEnvironment }}'
-        pool: { vmImage: 'ubuntu-latest' }
+        displayName: Incremental ADF deployment
+        environment: novamart-${{ parameters.deployEnvironment }}
+        pool:
+          vmImage: ubuntu-latest
         strategy:
           runOnce:
             deploy:
               steps:
-                - checkout: self
+                - download: current
+                  artifact: adf-arm
+
                 - task: AzurePowerShell@5
                   displayName: Stop existing triggers
                   inputs:
-                    azureSubscription: '$(azureServiceConnection)'
+                    azureSubscription: $(azureServiceConnection)
                     ScriptType: InlineScript
                     Inline: |
                       Get-AzDataFactoryV2Trigger -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)' |
                         Where-Object RuntimeState -eq 'Started' |
-                        ForEach-Object { Stop-AzDataFactoryV2Trigger -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)' -Name $_.Name -Force }
+                        ForEach-Object {
+                          Stop-AzDataFactoryV2Trigger -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)' -Name $_.Name -Force
+                        }
                     azurePowerShellVersion: LatestVersion
+
                 - task: AzureResourceManagerTemplateDeployment@3
                   displayName: Incremental ARM deployment
                   inputs:
                     deploymentScope: Resource Group
-                    azureResourceManagerConnection: '$(azureServiceConnection)'
-                    subscriptionId: '$(azureSubscriptionId)'
-                    action: 'Create Or Update Resource Group'
-                    resourceGroupName: '$(resourceGroupName)'
-                    location: '$(azureLocation)'
-                    templateLocation: 'Linked artifact'
-                    csmFile: '$(templateFile)'
-                    csmParametersFile: '$(parametersFile)'
+                    azureResourceManagerConnection: $(azureServiceConnection)
+                    subscriptionId: $(azureSubscriptionId)
+                    action: Create Or Update Resource Group
+                    resourceGroupName: $(resourceGroupName)
+                    location: $(azureLocation)
+                    templateLocation: Linked artifact
+                    csmFile: $(Pipeline.Workspace)/adf-arm/ARMTemplateForFactory.json
+                    csmParametersFile: $(Pipeline.Workspace)/adf-arm/ARMTemplateParametersForFactory.json
                     overrideParameters: >-
                       -factoryName "$(dataFactoryName)"
                       -ls_keyvault_properties_parameters_baseUrl_defaultValue "$(keyVaultUrl)"
@@ -90,30 +129,66 @@ stages:
                       -ls_sql_kv_properties_parameters_keyVaultUrl_defaultValue "$(keyVaultUrl)"
                       -tr_event_sales_properties_typeProperties_scope "$(storageAccountResourceId)"
                     deploymentMode: Incremental
+
                 - task: AzurePowerShell@5
-                  displayName: Set environment global parameters
+                  displayName: Set environment global parameters securely
                   inputs:
-                    azureSubscription: '$(azureServiceConnection)'
+                    azureSubscription: $(azureServiceConnection)
                     ScriptType: InlineScript
                     Inline: |
+                      $triggerId = "/subscriptions/$(azureSubscriptionId)/resourceGroups/$(resourceGroupName)/providers/Microsoft.Logic/workflows/$(logicAppName)/triggers/manual"
+                      $callbackResponse = Invoke-AzRestMethod -Method POST -Path "$triggerId/listCallbackUrl?api-version=2016-06-01"
+                      $callback = ($callbackResponse.Content | ConvertFrom-Json).value
+                      if ([string]::IsNullOrWhiteSpace($callback)) {
+                        throw 'Could not retrieve the Logic App callback URL.'
+                      }
+
                       $factoryId = "/subscriptions/$(azureSubscriptionId)/resourceGroups/$(resourceGroupName)/providers/Microsoft.DataFactory/factories/$(dataFactoryName)"
                       $payload = @{
                         properties = @{
                           globalParameters = @{
                             environment = @{ type = 'String'; value = '${{ upper(parameters.deployEnvironment) }}' }
-                            logicAppCallbackUrl = @{ type = 'String'; value = '$(logicAppCallbackUrl)' }
+                            logicAppCallbackUrl = @{ type = 'String'; value = $callback }
                           }
                         }
                       } | ConvertTo-Json -Depth 8
                       Invoke-AzRestMethod -Method PATCH -Path "$factoryId?api-version=2018-06-01" -Payload $payload | Out-Null
+                      $callback = $null
+                      $payload = $null
                     azurePowerShellVersion: LatestVersion
+
                 - task: AzurePowerShell@5
-                  displayName: Start deployed triggers
+                  displayName: Verify deployed artifact counts
                   inputs:
-                    azureSubscription: '$(azureServiceConnection)'
+                    azureSubscription: $(azureServiceConnection)
                     ScriptType: InlineScript
                     Inline: |
-                      'tr_schedule_daily','tr_event_sales' | ForEach-Object {
+                      $factory = Get-AzDataFactoryV2 -ResourceGroupName '$(resourceGroupName)' -Name '$(dataFactoryName)'
+                      if (-not $factory) { throw 'Target Data Factory was not found.' }
+                      $expected = @{ Pipeline = 6; Dataset = 3; LinkedService = 3; Trigger = 2; DataFlow = 1 }
+                      $actual = @{
+                        Pipeline = @(Get-AzDataFactoryV2Pipeline -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)').Count
+                        Dataset = @(Get-AzDataFactoryV2Dataset -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)').Count
+                        LinkedService = @(Get-AzDataFactoryV2LinkedService -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)').Count
+                        Trigger = @(Get-AzDataFactoryV2Trigger -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)').Count
+                        DataFlow = @(Get-AzDataFactoryV2DataFlow -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)').Count
+                      }
+                      foreach ($kind in $expected.Keys) {
+                        if ($actual[$kind] -ne $expected[$kind]) {
+                          throw "$kind verification failed. Expected $($expected[$kind]), found $($actual[$kind])."
+                        }
+                        Write-Host "$kind`: $($actual[$kind])"
+                      }
+                    azurePowerShellVersion: LatestVersion
+
+                - task: AzurePowerShell@5
+                  displayName: Start deployed triggers
+                  condition: and(succeeded(), eq(variables['startTriggers'], 'true'))
+                  inputs:
+                    azureSubscription: $(azureServiceConnection)
+                    ScriptType: InlineScript
+                    Inline: |
+                      'tr_schedule_daily', 'tr_event_sales' | ForEach-Object {
                         Start-AzDataFactoryV2Trigger -ResourceGroupName '$(resourceGroupName)' -DataFactoryName '$(dataFactoryName)' -Name $_ -Force
                       }
                     azurePowerShellVersion: LatestVersion

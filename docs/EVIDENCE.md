@@ -18,5 +18,6 @@ Save proof under `evidence/`. Redact callback URLs, credentials, tokens, and una
 - `14-event-trigger-run.png` — BlobCreated filename.
 - `15-azure-devops-release.png` — successful validation/deploy.
 - `16-prod-factory-change.png` — change in publish-only PROD.
+- `17-github-public-repository.png` — public portfolio repository with passing validation instructions.
 
 Also export the `sql/04_validation_queries.sql` result or capture it clearly.

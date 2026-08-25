@@ -17,12 +17,23 @@ $requiredFiles = @(
     'adf/pipeline/pl_dimensions_load.json',
     'adf/pipeline/pl_customer_scd.json',
     'adf/pipeline/pl_notify_failure.json',
+    'adf/pipeline/pl_master_daily.json',
     'adf/dataflow/df_scd_customer.json',
     'adf/trigger/tr_schedule_daily.json',
     'adf/trigger/tr_event_sales.json',
     'azure-pipelines.yml',
     'infra/main.bicep',
-    'infra/platform.bicep'
+    'infra/platform.bicep',
+    'scripts/Deploy-AdfArtifacts.ps1',
+    'scripts/Invoke-AdfPipeline.ps1',
+    'scripts/Get-AdfRunDiagnostics.ps1',
+    'scripts/Test-NovaMartData.ps1',
+    'sql/01_create_tables.sql',
+    'sql/02_create_logging.sql',
+    'sql/03_create_procedures.sql',
+    'sql/06_acceptance_assertions.sql',
+    'sql/05_data_summary.sql',
+    'sql/04_validation_queries.sql'
 )
 
 foreach ($relativePath in $requiredFiles) {
@@ -66,6 +77,57 @@ foreach ($pipelineFile in $pipelineFiles) {
     foreach ($duplicate in $duplicates) {
         $errors.Add("Duplicate top-level activity '$($duplicate.Name)' in $($pipelineFile.Name)")
     }
+}
+
+$schemaSql = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'sql/01_create_tables.sql')
+$filteredIndexPosition = $schemaSql.IndexOf('CREATE UNIQUE INDEX UX_DimCustomer_Current', [StringComparison]::OrdinalIgnoreCase)
+foreach ($requiredSetting in @(
+    'SET ANSI_NULLS ON',
+    'SET ANSI_PADDING ON',
+    'SET ANSI_WARNINGS ON',
+    'SET ARITHABORT ON',
+    'SET CONCAT_NULL_YIELDS_NULL ON',
+    'SET QUOTED_IDENTIFIER ON',
+    'SET NUMERIC_ROUNDABORT OFF'
+)) {
+    $settingPosition = $schemaSql.IndexOf($requiredSetting, [StringComparison]::OrdinalIgnoreCase)
+    if ($settingPosition -lt 0 -or $settingPosition -gt $filteredIndexPosition) {
+        $errors.Add("$requiredSetting must appear before the filtered index in sql/01_create_tables.sql")
+    }
+}
+
+$loggingSql = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'sql/02_create_logging.sql')
+if ($loggingSql -match '(?i)(you@yourdomain\.com|data-oncall@novamart\.example\.com)') {
+    $errors.Add('sql/02_create_logging.sql must not seed fake active notification recipients.')
+}
+
+$masterPipelineRaw = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'adf/pipeline/pl_master_daily.json')
+if ($masterPipelineRaw -match '"activity"\s*:\s*"Load Reference Dimensions"[^\]]*"Completed"') {
+    $errors.Add('pl_master_daily must not continue to sales after the dimension pipeline fails.')
+}
+
+$salesPipelineRaw = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'adf/pipeline/pl_sales_ingest_daily.json')
+foreach ($failureActivity in @('Fail Metadata Discovery', 'Fail Watermark Lookup', 'Fail Sales Batch')) {
+    if ($salesPipelineRaw -notmatch [regex]::Escape('"name": "' + $failureActivity + '"')) {
+        $errors.Add("pl_sales_ingest_daily must propagate failures through activity '$failureActivity'.")
+    }
+}
+
+$dimensionPipelineRaw = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'adf/pipeline/pl_dimensions_load.json')
+if ($dimensionPipelineRaw -notmatch '"collectionReference"\s*:\s*"\$\[''products''\]"' -or
+    $dimensionPipelineRaw -match '"path"\s*:\s*"\$\[''(sku|productName|category|listPrice|attributes)''\]') {
+    $errors.Add('Product mappings inside the products collection must use array-element-relative JSON paths.')
+}
+
+$pipelineRunnerRaw = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'scripts/Invoke-AdfPipeline.ps1')
+if ($pipelineRunnerRaw -match '@\{\s*parameters\s*=\s*\$Parameters\s*\}' -or
+    $pipelineRunnerRaw -notmatch '\$request\s*=\s*\$Parameters') {
+    $errors.Add('Invoke-AdfPipeline.ps1 must send createRun parameters at the JSON root.')
+}
+
+$foundationHelperRaw = Get-Content -Raw -LiteralPath (Join-Path $repositoryRoot 'scripts/Deploy-Foundation.ps1')
+if ($foundationHelperRaw -match 'Write-Host[^\r\n]*\$callback') {
+    $errors.Add('Deploy-Foundation.ps1 must never print the Logic App callback URL.')
 }
 
 $salesFolder = Join-Path $repositoryRoot 'source_data/partner_drops/daily_sales'

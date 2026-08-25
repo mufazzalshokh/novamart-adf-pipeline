@@ -14,6 +14,9 @@ param sqlAdministratorPassword string
 @description('Real address used by the independent Azure Monitor action group.')
 param alertEmailAddress string
 
+@description('Enable Gmail sending only after interactive OAuth authorization.')
+param enableGmailAction bool = false
+
 @description('Deploy both isolated environments. PROD ADF is intentionally not Git-linked.')
 param environments array = [
   'dev'
@@ -40,6 +43,7 @@ module platforms 'platform.bicep' = [for (env, index) in environments: {
     sqlAdministratorLogin: sqlAdministratorLogin
     sqlAdministratorPassword: sqlAdministratorPassword
     alertEmailAddress: alertEmailAddress
+    enableGmailAction: enableGmailAction
   }
 }]
 

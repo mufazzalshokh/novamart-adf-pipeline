@@ -4,6 +4,16 @@
    Creates the staging + dimensional + fact tables the pipelines load into.
    ============================================================================ */
 
+/* Required by SQL Server for filtered indexes and deterministic DDL. */
+SET ANSI_NULLS ON;
+SET ANSI_PADDING ON;
+SET ANSI_WARNINGS ON;
+SET ARITHABORT ON;
+SET CONCAT_NULL_YIELDS_NULL ON;
+SET QUOTED_IDENTIFIER ON;
+SET NUMERIC_ROUNDABORT OFF;
+GO
+
 /* ---------- Reference / dimension tables ---------- */
 IF OBJECT_ID('dbo.DimStore') IS NULL
 CREATE TABLE dbo.DimStore (

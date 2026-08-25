@@ -22,7 +22,7 @@
       {
         "name": "Load Incremental Sales",
         "type": "ExecutePipeline",
-        "dependsOn": [{ "activity": "Load Reference Dimensions", "dependencyConditions": ["Completed"] }],
+        "dependsOn": [{ "activity": "Load Reference Dimensions", "dependencyConditions": ["Succeeded"] }],
         "typeProperties": {
           "pipeline": { "referenceName": "pl_sales_ingest_daily", "type": "PipelineReference" },
           "waitOnCompletion": true,

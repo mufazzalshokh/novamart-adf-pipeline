@@ -40,4 +40,4 @@ Daily schedule suits normal operation; BlobCreated supplies low latency. A Tumbl
 - Filename dates drive discovery; `OrderTimestamp` drives the persisted watermark.
 - `OrderID` is globally unique. History-aware reporting joins the customer key where order time is within `[EffectiveFrom, EffectiveTo)`.
 - Exercise SQL access uses TLS plus the Azure-services firewall rule. Production should use managed private endpoints and managed-identity SQL authentication.
-- Office 365 API authorization is a one-time human OAuth consent step.
+- Gmail API authorization is a one-time human Google OAuth consent step.

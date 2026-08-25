@@ -179,6 +179,33 @@
             "failureMessage": { "value": "@activity('ForEach Sales File').error.message", "type": "Expression" }
           }
         }
+      },
+      {
+        "name": "Fail Metadata Discovery",
+        "type": "Fail",
+        "dependsOn": [{ "activity": "Notify Metadata Failure", "dependencyConditions": ["Completed"] }],
+        "typeProperties": {
+          "message": "Sales-file discovery failed; notification was attempted.",
+          "errorCode": "NMDP_SALES_METADATA_FAILED"
+        }
+      },
+      {
+        "name": "Fail Watermark Lookup",
+        "type": "Fail",
+        "dependsOn": [{ "activity": "Notify Watermark Failure", "dependencyConditions": ["Completed"] }],
+        "typeProperties": {
+          "message": "Sales-watermark lookup failed; notification was attempted.",
+          "errorCode": "NMDP_SALES_WATERMARK_FAILED"
+        }
+      },
+      {
+        "name": "Fail Sales Batch",
+        "type": "Fail",
+        "dependsOn": [{ "activity": "Notify Batch Failure", "dependencyConditions": ["Completed"] }],
+        "typeProperties": {
+          "message": "One or more sales files failed; notification was attempted.",
+          "errorCode": "NMDP_SALES_BATCH_FAILED"
+        }
       }
     ],
     "folder": { "name": "Sales" }

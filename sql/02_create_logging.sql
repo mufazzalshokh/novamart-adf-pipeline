@@ -5,6 +5,11 @@
    error and email-recipient tables used by the orchestration scenarios.
    ============================================================================ */
 
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET XACT_ABORT ON;
+GO
+
 /* ---------- Pipeline execution log (one row per run) ---------- */
 IF OBJECT_ID('dbo.PipelineExecution') IS NULL
 CREATE TABLE dbo.PipelineExecution (
@@ -62,8 +67,4 @@ CREATE TABLE dbo.EmailRecipient (
     Active       BIT DEFAULT 1
 );
 GO
-IF NOT EXISTS (SELECT 1 FROM dbo.EmailRecipient)
-    INSERT INTO dbo.EmailRecipient (EmailAddress) VALUES
-        ('data-oncall@novamart.example.com'),
-        ('you@yourdomain.com');   -- << replace with your own address to receive test alerts
-GO
+/* No fake active recipients are seeded. Configure a real address at deployment time. */

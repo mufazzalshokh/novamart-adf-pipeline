@@ -37,11 +37,11 @@
             "typeConversion": true,
             "typeConversionSettings": { "allowDataTruncation": false, "treatBooleanAsNumber": false },
             "mappings": [
-              { "source": { "path": "$['sku']" }, "sink": { "name": "SKU", "type": "String" } },
-              { "source": { "path": "$['productName']" }, "sink": { "name": "ProductName", "type": "String" } },
-              { "source": { "path": "$['category']" }, "sink": { "name": "Category", "type": "String" } },
-              { "source": { "path": "$['listPrice']" }, "sink": { "name": "ListPrice", "type": "Decimal" } },
-              { "source": { "path": "$['attributes']['brand']" }, "sink": { "name": "Brand", "type": "String" } }
+              { "source": { "path": "['sku']" }, "sink": { "name": "SKU", "type": "String" } },
+              { "source": { "path": "['productName']" }, "sink": { "name": "ProductName", "type": "String" } },
+              { "source": { "path": "['category']" }, "sink": { "name": "Category", "type": "String" } },
+              { "source": { "path": "['listPrice']" }, "sink": { "name": "ListPrice", "type": "Decimal" } },
+              { "source": { "path": "['attributes']['brand']" }, "sink": { "name": "Brand", "type": "String" } }
             ]
           }
         },

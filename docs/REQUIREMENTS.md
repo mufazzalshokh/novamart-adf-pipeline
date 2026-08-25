@@ -12,6 +12,6 @@
 | NMDP-108 | HTTP Logic App and recipient-driven child notification | Forced-failure email |
 | NMDP-109 | Daily and BlobCreated triggers; Tumbling Window documented | Schedule/event runs |
 | NMDP-110 | Annotations, user properties, diagnostics, KQL, alert/action group | Monitor/KQL/fired alert |
-| NMDP-111 | Bicep DEV/PROD; `adf_publish` ARM CI/CD with overrides | Release and PROD change |
+| NMDP-111 | Bicep DEV/PROD; ADF Publish evidence plus official utility validation/export and approval-gated ARM deployment | Release and PROD change |
 
 All repository artifacts are implemented. “Live evidence” requires the target tenant and follows `DEPLOYMENT.md`.

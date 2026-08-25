@@ -3,6 +3,11 @@
    Run this THIRD. These are called from ADF Stored Procedure / Lookup activities.
    ============================================================================ */
 
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+SET XACT_ABORT ON;
+GO
+
 /* Start a run: insert a "Started" row and return the new RunSeqNo.
    Call from a Lookup activity ("First row only") and read firstRow.RunSeqNo. */
 CREATE OR ALTER PROCEDURE dbo.LogPipelineStart
@@ -101,6 +106,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
     SET XACT_ABORT ON;
+    BEGIN TRY
     BEGIN TRANSACTION;
 
     UPDATE currentVersion
@@ -129,5 +135,10 @@ BEGIN
      WHERE currentVersion.CustomerSK IS NULL;
 
     COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF XACT_STATE() <> 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH;
 END;
 GO

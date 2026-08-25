@@ -9,6 +9,7 @@ param sqlAdministratorLogin string
 param sqlAdministratorPassword string
 
 param alertEmailAddress string
+param enableGmailAction bool
 
 var suffix = take(uniqueString(subscription().subscriptionId, resourceGroup().id), 7)
 var compactPrefix = replace(namePrefix, '-', '')
@@ -18,7 +19,7 @@ var sqlServerName = take(toLower('sql-${namePrefix}-${environmentName}-${suffix}
 var keyVaultName = take(toLower('kv-${compactPrefix}-${environmentName}-${suffix}'), 24)
 var logicAppName = take(toLower('la-${namePrefix}-failure-${environmentName}-${suffix}'), 60)
 var workspaceName = take(toLower('log-${namePrefix}-${environmentName}-${suffix}'), 63)
-var officeConnectionName = 'office365-${environmentName}'
+var gmailConnectionName = 'gmail'
 var keyVaultSecretsUserRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
 var storageBlobContributorRoleId = subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
 
@@ -227,6 +228,7 @@ resource failedPipelineAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01'
     severity: 1
     evaluationFrequency: 'PT5M'
     windowSize: 'PT5M'
+    skipQueryValidation: true
     scopes: [workspace.id]
     criteria: {
       allOf: [
@@ -249,13 +251,13 @@ resource failedPipelineAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01'
   }
 }
 
-resource office365Connection 'Microsoft.Web/connections@2016-06-01' = {
-  name: officeConnectionName
+resource gmailConnection 'Microsoft.Web/connections@2016-06-01' = if (!enableGmailAction) {
+  name: gmailConnectionName
   location: location
   properties: {
-    displayName: 'NovaMart Office 365 - ${toUpper(environmentName)}'
+    displayName: 'NovaMart Gmail - ${toUpper(environmentName)}'
     api: {
-      id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'office365')
+      id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'gmail')
     }
   }
 }
@@ -266,17 +268,17 @@ resource failureLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
   identity: { type: 'SystemAssigned' }
   properties: {
     state: 'Enabled'
-    parameters: {
+    parameters: enableGmailAction ? {
       '$connections': {
         value: {
-          office365: {
-            connectionId: office365Connection.id
-            connectionName: office365Connection.name
-            id: office365Connection.properties.api.id
+          gmail: {
+              connectionId: resourceId('Microsoft.Web/connections', 'gmail')
+              connectionName: 'gmail'
+              id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'gmail')
           }
         }
       }
-    }
+    } : {}
     definition: {
       '$schema': 'https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#'
       contentVersion: '1.0.0.0'
@@ -300,13 +302,13 @@ resource failureLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
           }
         }
       }
-      actions: {
+      actions: enableGmailAction ? {
         Send_an_email: {
           type: 'ApiConnection'
           runAfter: {}
           inputs: {
             host: {
-              connection: { name: '@parameters(\'$connections\')[\'office365\'][\'connectionId\']' }
+              connection: { name: '@parameters(\'$connections\')[\'gmail\'][\'connectionId\']' }
             }
             method: 'post'
             path: '/v2/Mail'
@@ -322,6 +324,18 @@ resource failureLogicApp 'Microsoft.Logic/workflows@2019-05-01' = {
           type: 'Response'
           runAfter: { Send_an_email: ['Succeeded'] }
           inputs: { statusCode: 202, body: { status: 'accepted' } }
+        }
+      } : {
+        Response: {
+          type: 'Response'
+          runAfter: {}
+          inputs: {
+            statusCode: 503
+            body: {
+              status: 'gmail-authorization-pending'
+              message: 'Authorize Gmail, then redeploy with enableGmailAction=true.'
+            }
+          }
         }
       }
       outputs: {}
