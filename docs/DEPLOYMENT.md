@@ -48,12 +48,12 @@ Use `SQLCMDPASSWORD` so the password is not exposed in the process command line.
 
 ## 4. Connect DEV to Azure DevOps Git
 
-Use Azure Repos as the ADF collaboration source and GitHub as the public portfolio mirror. Configure the DEV factory with Azure DevOps Git, collaboration branch `main`, publish branch `adf_publish`, and root `/adf`. Import existing resources.
+Use Azure Repos as the ADF collaboration source and GitHub as the public portfolio mirror. Configure the DEV factory with Azure DevOps Git, collaboration branch `main`, publish branch `adf_publish`, and root `/adf`. Because this repository already contains the validated ADF source, leave **Import existing Data Factory resources to repository** unchecked. Importing live mode can overwrite reviewed JSON and can capture environment-only global-parameter values.
 
 The JSON under `adf/factory/` must match the actual factory. If needed, rename the file/top-level `name` and set `location` before import. Set:
 
 - Key Vault URL in `ls_keyvault.baseUrl`, `ls_adls_kv.keyVaultUrl`, and `ls_sql_kv.keyVaultUrl`.
-- Factory `logicAppCallbackUrl` to the DEV callback URL.
+- Keep factory `logicAppCallbackUrl` as `__SET_BY_DEPLOYMENT__`. Deployment automation retrieves and applies the callback at runtime; never commit the signed callback URL.
 - `tr_event_sales.typeProperties.scope` to the DEV storage resource ID.
 
 Validate, commit via a feature branch/PR, and **Publish**. Confirm the generated ARM files appear in `adf_publish`; retain this as ADF Publish evidence. The release pipeline independently validates and exports from `main`, so it does not depend on generated branches containing `azure-pipelines.yml`.

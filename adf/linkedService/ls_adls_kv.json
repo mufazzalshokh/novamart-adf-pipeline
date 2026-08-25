@@ -5,7 +5,7 @@
     "parameters": {
       "keyVaultUrl": {
         "type": "String",
-        "defaultValue": "https://kv-novamart-dev.vault.azure.net/"
+        "defaultValue": "https://kv-mufaz2-dev-q5vvxom.vault.azure.net/"
       },
       "secretName": {
         "type": "String",

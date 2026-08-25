@@ -1,5 +1,5 @@
 {
-  "name": "novamart-adf-dev",
+  "name": "adf-mufaz2-dev-q5vvxom",
   "properties": {
     "globalParameters": {
       "environment": {
@@ -15,5 +15,5 @@
       "PolicyValidationEnabled": "true"
     }
   },
-  "location": "eastus"
+  "location": "centralus"
 }

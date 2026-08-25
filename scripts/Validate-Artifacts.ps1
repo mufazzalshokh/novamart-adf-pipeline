@@ -6,7 +6,7 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $errors = [System.Collections.Generic.List[string]]::new()
 
 $requiredFiles = @(
-    'adf/factory/novamart-adf-dev.json',
+    'adf/factory/adf-mufaz2-dev-q5vvxom.json',
     'adf/linkedService/ls_keyvault.json',
     'adf/linkedService/ls_adls_kv.json',
     'adf/linkedService/ls_sql_kv.json',

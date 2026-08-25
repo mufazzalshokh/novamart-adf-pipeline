@@ -23,7 +23,7 @@ variables:
   - name: adfArmOutput
     value: $(Build.SourcesDirectory)/adf-arm-output
   - name: sourceFactoryResourceId
-    value: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-novamart-dev/providers/Microsoft.DataFactory/factories/novamart-adf-dev
+    value: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-mufaz2-dev/providers/Microsoft.DataFactory/factories/adf-mufaz2-dev-q5vvxom
 
 stages:
   - stage: Validate
